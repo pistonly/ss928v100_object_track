@@ -8,42 +8,50 @@
  * This module
  */
 
-#ifndef NNN_OSTRACK_CALLBACK
-#define NNN_OSTRACK_CALLBACK
+#ifndef NNN_OSTRACK_CALLBACK_HPP
+#define NNN_OSTRACK_CALLBACK_HPP
+
 #include "acl/acl_mdl.h"
+#include "utils.hpp"
 #include <cstddef>
 #include <string>
 #include <thread>
 #include <vector>
 
-class NNN_OSTRACK_CALLBACK{
-public:
-  NNN_OSTRACK_CALLBACK(const std::string &modelPath,
-                       const std::string &aclJSON="");
-  ~NNN_OSTRACK_CALLBACK();
 
-  Result Host2Device(const void *inputdata, const size_t input_size);
-  Result ExecuteRPN_Async(std::vector<std::vector<char>> &outputs);
+class NNN_Ostrack_Callback {
+public:
+  NNN_Ostrack_Callback(const std::string &modelPath,
+                       const std::string &aclJSON = "");
+  ~NNN_Ostrack_Callback();
+
+  Result Host2Device(const int inputIdex, const void *inputdata, const size_t input_size);
+  Result ExecuteRPN_Async();
+  Result Execute();
 
   /**
    * @brief synchronize stream
    */
   Result SynchronizeStream();
 
+  std::vector<std::vector<char>> m_outputs;
+
   /**
    * @brief: cp data from Device to Host
    */
-  virtual void CallbackFunc(void *data);
+  void CallbackFunc(void *data);
   Result Device2Host(std::vector<std::vector<char>> &outputs);
 
 private:
   volatile static size_t mg_ostrack_callbackInterval; // launch callback interval
-  valatile static size_t mg_ostrack_startCallback;  // start callback
+  volatile static size_t mg_ostrack_startCallback;  // start callback
 
-  static bool mg_ostrack_isExist;
+  static bool mg_ostrack_isExit;
   std::string m_aclJSON;
 
   int m_batch;
+  int m_input_num;  /**< input number of model */
+  int m_output_num; /**< output number from model */
 
   std::vector<size_t> mv_output_sizes;
   std::vector<std::string> mv_output_names;
@@ -55,13 +63,18 @@ private:
   aclrtStream m_stream;
   bool mb_loadFlag{false}; /**< whether model is loaded */
 
+  uint64_t m_tid{0};
+  std::thread *mpt_td{nullptr};
+
+  uint32_t m_modelId{0};
+  void *m_modelMemPtr{nullptr};
   aclmdlDesc *mp_modelDesc{nullptr};
   aclmdlDataset *mp_input{nullptr};
   aclmdlDataset *mp_output{nullptr};
 
   Result LoadModelFromFile(const std::string &modelPath);
   Result CreateModelDesc();
-    /**
+  /**
    * @brief initialize resources
    * @return result
    */
@@ -76,7 +89,7 @@ private:
   /**
    * @brief: create buffers for input.
    */
-  std::size_t m_image_buffersize{0};
+  std::vector<size_t> m_input_buffersizes;
   Result CreateInputBuf(int index, aclmdlDataset *p_inputds);
   Result CreateInputBuf();
 
@@ -134,6 +147,8 @@ private:
   /**
    * @}
    */
+};
 
-}
 #endif
+
+
