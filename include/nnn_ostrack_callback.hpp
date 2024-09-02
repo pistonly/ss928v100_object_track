@@ -51,9 +51,15 @@ void yuv_crop(const unsigned char *img, const int imgW, const int imgH,
 
 class NNN_Ostrack_Callback {
 public:
-  NNN_Ostrack_Callback(const std::string &modelPath,
-                       const std::string &aclJSON = "");
+  NNN_Ostrack_Callback(const std::string &modelPath, float template_factor,
+                       float search_area_factor, int template_size,
+                       int search_size, const std::string &aclJSON = "");
   ~NNN_Ostrack_Callback();
+
+  Result preprocess(const unsigned char *img, const int imgW, const int imgH,
+                    int x0, int y0, int w, int h, float &target_resize_factor,
+                    int &target_crop_x0, int &target_crop_y0,
+                    bool updateTemplate = false);
 
   Result Host2Device(const int inputIdex, const void *inputdata,
                      const size_t input_size);
@@ -101,6 +107,8 @@ public:
    */
 
 private:
+  float m_template_factor, m_search_area_factor;
+  int m_template_size, m_search_size;
   volatile static size_t
       mg_ostrack_callbackInterval;                 // launch callback interval
   volatile static size_t mg_ostrack_startCallback; // start callback

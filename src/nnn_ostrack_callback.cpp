@@ -3,19 +3,24 @@
 #include "acl/acl_mdl.h"
 #include "utils.hpp"
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <iostream>
 #include <sstream>
 #include <thread>
-#include <cmath>
 
 volatile size_t NNN_Ostrack_Callback::mg_ostrack_callbackInterval = 0;
 volatile size_t NNN_Ostrack_Callback::mg_ostrack_startCallback = 0;
 bool NNN_Ostrack_Callback::mg_ostrack_isExit = false;
 
 NNN_Ostrack_Callback::NNN_Ostrack_Callback(const std::string &modelPath,
+                                           float template_factor,
+                                           float search_area_factor,
+                                           int template_size, int search_size,
                                            const std::string &aclJSON)
-    : m_aclJSON(aclJSON) {
+    : m_template_factor(template_factor),
+      m_search_area_factor(search_area_factor), m_template_size(template_size),
+      m_search_size(search_size), m_aclJSON(aclJSON) {
   // resource
   InitResource();
 
@@ -865,4 +870,88 @@ void yuv_crop(const unsigned char *img, const int imgW, const int imgH,
       roi_uv_row_head += roiW;
     }
   }
+}
+
+Result NNN_Ostrack_Callback::preprocess(const unsigned char *img,
+                                        const int imgW, const int imgH, int x0,
+                                        int y0, int w, int h,
+                                        float &target_resize_factor,
+                                        int &target_crop_x0,
+                                        int &target_crop_y0,
+                                        bool updateTemplate) {
+  // x y w h should be even;
+  x0 = x0 / 2 * 2;
+  y0 = y0 / 2 * 2;
+  w = w / 2 * 2;
+  h = h / 2 * 2;
+  // get template
+  if (updateTemplate) {
+    float template_resize_factor;
+    int template_crop_x0, template_crop_y0, template_crop_x1, template_crop_y1,
+        template_pad_t, template_pad_b, template_pad_l, template_pad_r,
+        template_crop_sz;
+
+    sample_target(imgW, imgH, x0, y0, h, w, m_template_factor, m_template_size,
+                  template_resize_factor, template_crop_x0, template_crop_y0,
+                  template_crop_x1, template_crop_y1, template_pad_t,
+                  template_pad_b, template_pad_l, template_pad_r,
+                  template_crop_sz);
+    int template_input_size = (template_crop_sz / 16 + 1) * 16;
+    std::vector<unsigned char> templateData(
+        template_input_size * template_input_size * 1.5, 0);
+    yuv_crop(img, imgW, imgH, template_crop_x0, template_crop_y0,
+             template_crop_x1, template_crop_y1, template_input_size,
+             template_input_size, templateData);
+    // // debug
+    // std::cout << "template_crop: " << template_crop_x0 << ", "
+    //           << template_crop_y0 << ", " << template_crop_x1 << ", "
+    //           << template_crop_y1 << std::endl;
+    // std::cout << "template size: " << template_input_size << std::endl;
+    // saveBinaryFile(templateData, "template.bin");
+
+    // set aipp for template
+    int crop_w = template_crop_x1 - template_crop_x0,
+        crop_h = template_crop_y1 - template_crop_y0;
+    SetAIPPPSrcSize(template_input_size, template_input_size);
+    SetAIPPCrop(0, 0, crop_w, crop_h);
+    SetAIPPResize(crop_w, crop_h, m_template_size, m_template_size);
+    // TODO:
+    SetAIPPPadding(0, 0, 0, 0);
+    SetAIPP(0);
+    // copy to device
+    Host2Device(0, templateData.data(), templateData.size());
+  }
+
+  // get search image
+  int target_crop_x1, target_crop_y1,
+      target_pad_t, target_pad_b, target_pad_l, target_pad_r, target_crop_sz;
+
+  sample_target(imgW, imgH, x0, y0, h, w, m_search_area_factor, m_template_size,
+                target_resize_factor, target_crop_x0, target_crop_y0,
+                target_crop_x1, target_crop_y1, target_pad_t, target_pad_b,
+                target_pad_l, target_pad_r, target_crop_sz);
+  int search_input_size = (target_crop_sz / 16 + 1) * 16;
+  std::vector<unsigned char> targetData(
+      search_input_size * search_input_size * 1.5, 0);
+  yuv_crop(img, imgW, imgH, target_crop_x0, target_crop_y0,
+           target_crop_x1, target_crop_y1, search_input_size, search_input_size,
+           targetData);
+  // // debug
+  // std::cout << "target_crop: " << target_crop_x0 << ", " << target_crop_y0
+  //           << ", " << target_crop_x1 << ", " << target_crop_y1 << std::endl;
+  // std::cout << "target input size: " << search_input_size << std::endl;
+  // saveBinaryFile(targetData, "target.bin");
+
+  // set aipp for template
+  int crop_w = target_crop_x1 - target_crop_x0;
+  int crop_h = target_crop_y1 - target_crop_y0;
+  SetAIPPPSrcSize(search_input_size, search_input_size);
+  SetAIPPCrop(0, 0, crop_w, crop_h);
+  SetAIPPResize(crop_w, crop_h, m_search_size, m_search_size);
+  // TODO:
+  SetAIPPPadding(0, 0, 0, 0);
+  SetAIPP(1);
+  // copy to device
+  Host2Device(1, targetData.data(), targetData.size());
+  return SUCCESS;
 }
