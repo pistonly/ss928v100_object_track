@@ -32,6 +32,9 @@ set(OpenCV_DIR ${CMAKE_SOURCE_DIR}/third_part/opencv_kxw/lib/cmake/opencv4)
 # FFmpeg路径
 set(FFMPEG_PATH /home/liuyang/Documents/haisi/ffmpeg/install)
 
+# eigen path
+set(EIGEN_PATH ${CMAKE_SOURCE_DIR}/third_part/eigen-3.4.0)
+
 # 查找 OpenCV 包
 find_package(OpenCV REQUIRED)
 
@@ -44,6 +47,8 @@ include_directories(
   ${OpenCV_INCLUDE_DIRS}
   ${FFMPEG_PATH}/include
   ${SAMPLE_PATH}/audio/adp/
+
+  ${EIGEN_PATH}/
 )
 
 set(LIB_NNN_PATH ${DDK_NNN_PATH}/acllib/lib64/stub/)
@@ -52,7 +57,8 @@ set(SYSTEM_LIBS pthread m dl stdc++)
 
 add_library(hardware_decode STATIC src/ffmpeg_vdec_vpss.cpp)
 
-add_executable(test_ostrack ./examples/test_nnn_ostrack.cpp ./src/nnn_ostrack_callback.cpp)
+FILE(GLOB OST_SRC ./src/nnn_ostrack_callback.cpp)
+add_executable(test_ostrack ./examples/test_nnn_ostrack.cpp ${OST_SRC})
 
 target_link_libraries(test_ostrack
   ${SYSTEM_LIBS}
@@ -74,6 +80,22 @@ add_executable(test_rtsp_vdec ./examples/test_rtsp_vdec.cpp ${SAMPLE_COMMON_SRC}
 target_link_libraries(test_rtsp_vdec
   ${SYSTEM_LIBS}
   ${IVE_LINK_LIBS}
+  hardware_decode
+  avformat
+  avcodec
+  avutil
+  swresample
+  swscale
+  stdc++ # note this line is important
+)
+
+
+FILE(GLOB TRACK_SRC ./src/Strack.cpp ./src/kalmanFilter.cpp)
+add_executable(one_camera_track ./examples/one_camera_track.cpp ${SAMPLE_COMMON_SRC} ${UTILS_SRC} ${SVP_COMMON_SRC} ${OST_SRC} ${TRACK_SRC})
+target_link_libraries(one_camera_track
+  ${SYSTEM_LIBS}
+  ${IVE_LINK_LIBS}
+  ascendcl
   hardware_decode
   avformat
   avcodec
