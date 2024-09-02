@@ -7,6 +7,7 @@
 #include <iostream>
 #include <sstream>
 #include <thread>
+#include <cmath>
 
 volatile size_t NNN_Ostrack_Callback::mg_ostrack_callbackInterval = 0;
 volatile size_t NNN_Ostrack_Callback::mg_ostrack_startCallback = 0;
@@ -28,9 +29,18 @@ NNN_Ostrack_Callback::NNN_Ostrack_Callback(const std::string &modelPath,
   GetRealOutputSize();
 
   RegistCallBackThread();
+
+  // aipp
+  mp_aippParam = aclmdlCreateAIPP(1);
+  SetAIPP_Glob();
 }
 
 NNN_Ostrack_Callback::~NNN_Ostrack_Callback() {
+  if (mp_aippParam) {
+    aclmdlDestroyAIPP(mp_aippParam);
+    mp_aippParam = nullptr;
+  }
+
   UnRegistCallBackThread();
 
   UnloadModel();
@@ -555,16 +565,16 @@ void NNN_Ostrack_Callback::CallbackFunc(void *data) {
     std::cerr << "Device2host error" << std::endl;
   }
   std::vector<float> outputs(4);
-  for (int i=0; i<4; ++i){
-    outputs[i] = *reinterpret_cast<float*>(&m_outputs[0][4 * i]);
+  for (int i = 0; i < 4; ++i) {
+    outputs[i] = *reinterpret_cast<float *>(&m_outputs[0][4 * i]);
   }
 
   std::cout << "outputs: ";
-  for (auto o: outputs){
+  for (auto o : outputs) {
     std::cout << o << ", ";
   }
   std::cout << std::endl;
-
+  m_outputs_f.push_back(outputs);
 }
 
 Result NNN_Ostrack_Callback::CreateModelDesc() {
@@ -640,4 +650,219 @@ Result NNN_Ostrack_Callback::UnsubscribeReport(std::thread &td, uint64_t tid) {
 
 size_t NNN_Ostrack_Callback::GetOutputDataSize(int index) const {
   return aclmdlGetOutputSizeByIndex(mp_modelDesc, index);
+}
+
+Result NNN_Ostrack_Callback::SetAIPPCsc() {
+  int8_t csc_switch = 1;
+  int16_t matrix_r0c0 = 298;
+  int16_t matrix_r0c1 = 0;
+  int16_t matrix_r0c2 = 409;
+  int16_t matrix_r1c0 = 298;
+  int16_t matrix_r1c1 = -100;
+  int16_t matrix_r1c2 = -208;
+  int16_t matrix_r2c0 = 298;
+  int16_t matrix_r2c1 = 516;
+  int16_t matrix_r2c2 = 0;
+
+  aclError ret = aclmdlSetAIPPCscParams(
+      mp_aippParam, csc_switch, matrix_r0c0, matrix_r0c1, matrix_r0c2,
+      matrix_r1c0, matrix_r1c1, matrix_r1c2, matrix_r2c0, matrix_r2c1,
+      matrix_r2c2, 16, 128, 128, 16, 128, 128);
+  if (ret != ACL_SUCCESS) {
+    return FAILED;
+  }
+  return SUCCESS;
+}
+
+Result NNN_Ostrack_Callback::SetAIPPCrop(int32_t start_x, int32_t start_y,
+                                         int32_t crop_w, int32_t crop_h,
+                                         int8_t crop) {
+  uint64_t batch_idx = 0;
+  aclError ret = aclmdlSetAIPPCropParams(mp_aippParam, crop, start_x, start_y,
+                                         crop_w, crop_h, batch_idx);
+  if (ret != ACL_SUCCESS) {
+    return FAILED;
+  }
+  return SUCCESS;
+}
+
+Result NNN_Ostrack_Callback::SetAIPPResize(int32_t input_w, int32_t input_h,
+                                           int32_t output_w, int32_t output_h,
+                                           int8_t resize) {
+  uint64_t batch_idx = 0;
+  aclError ret = aclmdlSetAIPPScfParams(mp_aippParam, resize, input_w, input_h,
+                                        output_w, output_h, batch_idx);
+  if (ret != ACL_SUCCESS) {
+    return FAILED;
+  }
+  return SUCCESS;
+}
+
+Result NNN_Ostrack_Callback::SetAIPPPadding(int32_t top, int32_t bottom,
+                                            int32_t left, int32_t right,
+                                            int8_t padding) {
+  uint64_t batch_idx = 0;
+  aclError ret = aclmdlSetAIPPPaddingParams(mp_aippParam, padding, top, bottom,
+                                            left, right, batch_idx);
+  if (ret != ACL_SUCCESS) {
+    return FAILED;
+  }
+  return SUCCESS;
+}
+
+Result NNN_Ostrack_Callback::SetAIPPPSrcSize(int32_t w, int32_t h) {
+  aclError ret = aclmdlSetAIPPSrcImageSize(mp_aippParam, w, h);
+  if (ret != ACL_SUCCESS) {
+    std::cout << "aclmdlSetAIPPSrcImageSize error " << std::endl;
+    return FAILED;
+  }
+  return SUCCESS;
+}
+
+Result NNN_Ostrack_Callback::SetAIPP_Glob() {
+  aclError ret = aclmdlSetAIPPInputFormat(mp_aippParam, ACL_YUV420SP_U8);
+
+  if (ret != ACL_SUCCESS) {
+    return FAILED;
+  }
+
+  Result res = SetAIPPCsc();
+  if (res != SUCCESS) {
+    return FAILED;
+  }
+
+  res = SetAIPPMean(124, 116, 104, 0);
+  if (res != SUCCESS) {
+    return FAILED;
+  }
+
+  res = SetAIPPVar(0.01712475, 0.017507, 0.01742919, 1.0);
+  if (res != SUCCESS) {
+    return FAILED;
+  }
+  return SUCCESS;
+}
+
+Result NNN_Ostrack_Callback::GetAIPPInfo() {
+  aclAippInfo aippInfo;
+  aclError ret = aclmdlGetFirstAippInfo(m_modelId, 0, &aippInfo);
+  std::cout << "AIPP INFO:" << std::endl;
+  std::cout << "srcImageSizeW: " << aippInfo.srcImageSizeW << std::endl;
+  std::cout << "cropSwitch: " << aippInfo.cropSwitch << std::endl;
+  std::cout << "resizeSwitch: " << aippInfo.resizeSwitch << std::endl;
+}
+
+Result NNN_Ostrack_Callback::SetAIPP(size_t inputIdx) {
+  aclmdlInputAippType aippType;
+  size_t aippIndex;
+  aclError ret = aclmdlGetAippType(m_modelId, inputIdx, &aippType, &aippIndex);
+
+  if (ret != ACL_SUCCESS) {
+    std::cout << "aclmdlGetAippType failed" << std::endl;
+    return FAILED;
+  }
+
+  ret = aclmdlSetInputAIPP(m_modelId, mp_input, aippIndex, mp_aippParam);
+  if (ret != ACL_SUCCESS) {
+    std::cout << "set aipp failed" << std::endl;
+    return FAILED;
+  }
+  return SUCCESS;
+}
+
+Result NNN_Ostrack_Callback::SetAIPPMean(int16_t m_ch0, int16_t m_ch1,
+                                         int16_t m_ch2, int16_t m_ch3) {
+  uint64_t batch_idx = 0;
+  aclError ret = aclmdlSetAIPPDtcPixelMean(mp_aippParam, m_ch0, m_ch1, m_ch2,
+                                           m_ch3, batch_idx);
+
+  if (ret != ACL_SUCCESS) {
+    std::cout << "aclmdlSetAIPPDtcPixelMean failed" << std::endl;
+    return FAILED;
+  }
+  return SUCCESS;
+}
+
+Result NNN_Ostrack_Callback::SetAIPPVar(float var_ch0, float var_ch1,
+                                        float var_ch2, float var_ch3) {
+  uint64_t batch_idx = 0;
+  aclError ret = aclmdlSetAIPPPixelVarReci(mp_aippParam, var_ch0, var_ch1,
+                                           var_ch2, var_ch3, batch_idx);
+
+  if (ret != ACL_SUCCESS) {
+    std::cout << "aclmdlSetAIPPDtcPixelMean failed" << std::endl;
+    return FAILED;
+  }
+  return SUCCESS;
+}
+
+void sample_target(int image_w, int image_h, int x0, int y0, int h, int w,
+                   float search_area_factor, int output_sz,
+                   float &resize_factor, int &crop_x0, int &crop_y0,
+                   int &crop_x1, int &crop_y1, int &pad_t, int &pad_b,
+                   int &pad_l, int &pad_r, int &crop_sz) {
+  crop_sz = (int)(std::ceil(std::sqrt(w * h) * search_area_factor)) / 2 * 2;
+  float cx = x0 + 0.5 * w;
+  float cy = y0 + 0.5 * h;
+  crop_x0 = (int)(std::round(cx - crop_sz * 0.5)) / 2 * 2;
+  crop_y0 = (int)(std::round(cy - crop_sz * 0.5)) / 2 * 2;
+  crop_x1 = crop_x0 + crop_sz;
+  crop_y1 = crop_y0 + crop_sz;
+
+  pad_l = std::max(0, -crop_x0);
+  pad_r = std::max(crop_x1 - image_w + 1, 0);
+  pad_t = std::max(0, -crop_y0);
+  pad_b = std::max(crop_y1 - image_h + 1, 0);
+
+  // update crop
+  crop_x0 = crop_x0 + pad_l;
+  crop_y0 = crop_y0 + pad_t;
+  crop_x1 = crop_x1 - pad_r;
+  crop_y1 = crop_y1 - pad_b;
+
+  resize_factor = (float)output_sz / crop_sz;
+}
+
+void yuv_crop(const unsigned char *img, const int imgW, const int imgH,
+              const int crop_x0, const int crop_y0, const int crop_x1,
+              const int crop_y1, const int roiW, const int roiH,
+              std::vector<unsigned char> &roi) {
+  if (roi.size() < (roiH * roiW * 1.5)) {
+    std::cerr << "roi size error! " << std::endl;
+    return;
+  }
+
+  if (crop_x0 > imgW || crop_y0 > imgH) {
+    std::cerr << "crop start error" << std::endl;
+    return;
+  }
+
+  int crop_w = crop_x1 - crop_x0;
+  int crop_h = crop_y1 - crop_y0;
+  if (crop_w > roiW)
+    crop_w = roiW;
+  if (crop_h > roiH)
+    crop_h = roiH;
+
+  const int img_Y_size = imgH * imgW;
+  const int roi_Y_size = roiH * roiW;
+  int img_Y_row_head = crop_y0 * imgW, roi_Y_row_head = 0;
+  int img_uv_row_head = (imgH + crop_y0 * 0.5) * imgW,
+      roi_uv_row_head = roiH * roiW;
+  for (auto h = 0; h < crop_h; ++h) {
+    for (auto w = 0; w < crop_w; ++w) {
+      // Y channel row
+      roi[roi_Y_row_head + w] = img[img_Y_row_head + w + crop_x0];
+      // uv channel. uv channel has the same w and Y channel
+      if (h % 2 == 0) {
+        roi[roi_uv_row_head + w] = img[img_uv_row_head + w + crop_x0];
+      }
+    }
+    img_Y_row_head += imgW;
+    roi_Y_row_head += roiW;
+    if (h % 2 == 0) {
+      img_uv_row_head += imgW;
+      roi_uv_row_head += roiW;
+    }
+  }
 }

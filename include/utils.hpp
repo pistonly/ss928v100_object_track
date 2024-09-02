@@ -12,6 +12,7 @@
 #include <queue>
 #include <string>
 #include <sys/stat.h>
+#include "ot_common_video.h"
 
 #define INFO_LOG(fmt, ...) fprintf(stdout, "[INFO]  " fmt "\n", ##__VA_ARGS__)
 #define WARN_LOG(fmt, ...) fprintf(stdout, "[WARN]  " fmt "\n", ##__VA_ARGS__)
@@ -128,6 +129,14 @@ void get_file_stem(const std::string &filepath, std::string &file_stem);
 void save_output(const std::string &output_dir, const std::string output_stem,
                  const std::string &feature,
                  const std::vector<size_t> &output_sizes,
-                 const std::vector<std::string>& outputnode_names);
+                 const std::vector<std::string> &outputnode_names);
+
+/**
+ * @brief copy yuv420 from frame
+ * @details Description
+ * @param[out] yuv420 Description
+ * @param[in] frame Description
+ */
+void copy_yuv420_from_frame(char *yuv420, ot_video_frame_info *frame);
 
 #endif

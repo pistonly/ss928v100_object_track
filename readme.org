@@ -4,3 +4,11 @@
   ./test_ostrack
 #+end_src
 
+
+* rtsp source
+see ~rtsp_server~
+** compress to h265
+#+begin_src bash
+  bash $HOME/Documents/rtsp_server/compress_to_h265.sh $HOME/Documents/SOT/2-My_track/assets/test220
+#+end_src
+* hisi ss928v100: rtsp + vdec
