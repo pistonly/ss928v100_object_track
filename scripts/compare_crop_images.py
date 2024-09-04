@@ -16,8 +16,8 @@ template = img[template_crop[1]:template_crop[3], template_crop[0]:template_crop
 target = img[target_crop[1]:target_crop[3], target_crop[0]:target_crop[2]]
 
 # cpp output
-template_bin = "../out/template.bin"
-target_bin = "../out/target.bin"
+template_bin = "../out/template_1.bin"
+target_bin = "../out/target_1.bin"
 
 template_H, template_W = template.shape[0:2]
 target_H, target_W = target.shape[0:2]

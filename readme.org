@@ -5,10 +5,27 @@
 #+end_src
 
 
+* dynamic aipp
+#+begin_src cfg
+aipp_op { 
+aipp_mode: dynamic
+related_input_rank : 0
+max_src_image_size: 38400
+}
+
+aipp_op { 
+aipp_mode: dynamic
+related_input_rank : 1
+max_src_image_size: 38400
+}
+
+#+end_src
+
 * rtsp source
 see ~rtsp_server~
 ** compress to h265
 #+begin_src bash
   bash $HOME/Documents/rtsp_server/compress_to_h265.sh $HOME/Documents/SOT/2-My_track/assets/test220
 #+end_src
-* hisi ss928v100: rtsp + vdec
+
+* hisi ss928v100: rtsp + vdec + ostrack

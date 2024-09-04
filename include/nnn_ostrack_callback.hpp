@@ -107,6 +107,7 @@ public:
    */
 
 private:
+  int m_imageId{0};
   float m_template_factor, m_search_area_factor;
   int m_template_size, m_search_size;
   volatile static size_t

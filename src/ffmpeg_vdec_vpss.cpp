@@ -311,9 +311,9 @@ static td_s32 sample_start_vpss(ot_vpss_grp *vpss_grp, td_u32 vpss_grp_num,
   return ret;
 }
 
-HardwareDecoder::HardwareDecoder(const std::string &rtsp_url)
-    : rtsp_url_(rtsp_url), fmt_ctx_(nullptr), video_stream_index_(-1),
-      decoding_(false) {
+HardwareDecoder::HardwareDecoder(const std::string &rtsp_url, bool step_mode)
+    : mb_step_mode(step_mode), mb_decode_step_on(true), rtsp_url_(rtsp_url),
+      fmt_ctx_(nullptr), video_stream_index_(-1), decoding_(false) {
   avformat_network_init();
   if (!initialize_ffmpeg() || !initialize_vdec()) {
     throw std::runtime_error("Initialization failed");
@@ -397,7 +397,62 @@ bool HardwareDecoder::initialize_vdec() {
 
 void HardwareDecoder::start_decode() {
   decoding_ = true;
-  decode_thread_ = std::thread(&HardwareDecoder::decode_thread, this);
+  if (mb_step_mode)
+    decode_thread_ = std::thread(&HardwareDecoder::decode_thread_step, this);
+  else
+    decode_thread_ = std::thread(&HardwareDecoder::decode_thread, this);
+}
+
+void HardwareDecoder::decode_thread_step() {
+  AVPacket packet;
+  ot_vdec_stream stream;
+  int packet_num = 0;
+
+  while (decoding_) {
+    if (mb_step_mode) {
+      if (!mb_decode_step_on) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10)); // waiting
+        continue;
+      } else {
+        if (packet_num > 0) {
+          // TODO: lock for thread safe
+          mb_decode_step_on = false;
+        }
+      }
+    } else {
+      std::cerr << "mb_step_mode should be ture" << std::endl;
+    }
+    if (av_read_frame(fmt_ctx_, &packet) < 0)
+      continue;
+
+    if (packet.stream_index == video_stream_index_) {
+      stream.addr = packet.data;
+      stream.len = packet.size;
+      stream.pts = packet.pts;
+      stream.need_display = TD_TRUE;
+      stream.end_of_frame = TD_TRUE;
+      stream.end_of_stream = TD_FALSE;
+
+      td_s32 ret = ss_mpi_vdec_send_stream(0, &stream, -1);
+      if (ret != TD_SUCCESS) {
+        std::cerr << "Error sending stream to decoder for " << std::hex << ret
+                  << std::endl;
+        break;
+      }
+      packet_num++;
+      // if (packet_num > 2) {
+      //   mb_decode_step_on = false;
+      // }
+      std::cout << "red frame number: " << packet_num << std::endl;
+    }
+    av_packet_unref(&packet);
+
+    td_s32 ret = ss_mpi_vdec_query_status(0, &vdec_status_);
+    if (ret != TD_SUCCESS) {
+      std::cerr << "Error querying VDEC status!" << std::endl;
+    }
+  }
+  g_sample_exit = 1;
 }
 
 void HardwareDecoder::decode_thread() {
@@ -406,7 +461,11 @@ void HardwareDecoder::decode_thread() {
   int packet_num = 0;
 
   while (decoding_ && av_read_frame(fmt_ctx_, &packet) >= 0) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(33)); // waiting
+    if (mb_step_mode) {
+      std::cerr << "mb_step_mode should be false" << std::endl;
+    } else {
+      std::this_thread::sleep_for(std::chrono::milliseconds(33)); // waiting
+    }
 
     if (packet.stream_index == video_stream_index_) {
       stream.addr = packet.data;
@@ -501,8 +560,13 @@ bool HardwareDecoder::get_frames(void *img_H, ot_svp_dst_img *dst_L) {
   ret = release_frames();
   if (ret != TD_SUCCESS)
     return false;
-  else
+  else {
+    if (mb_step_mode) {
+      // TODO: LOCK for thread safe
+      mb_decode_step_on = true;
+    }
     return true;
+  }
 }
 
 bool HardwareDecoder::get_frame_without_release() {
@@ -552,6 +616,11 @@ bool HardwareDecoder::get_frame_without_release() {
     std::cout << "Received frame-1 with width: " << frame_L.video_frame.width
               << std::endl;
   }
+  if (mb_step_mode) {
+    std::cout << "set mb_decode_step_on" << std::endl;
+    mb_decode_step_on = true;
+  }
+
   return true;
 }
 
