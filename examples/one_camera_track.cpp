@@ -30,6 +30,7 @@ int main(int argc, char *argv[]) {
   float search_area_factor = 4;
   int template_size = 96;
   int search_size = 192;
+  bool save_result = false;
 
   // vdec source
   std::string rtsp_url = "rtsp://172.23.24.52:8554/test";
@@ -63,8 +64,7 @@ int main(int argc, char *argv[]) {
 
   signal(SIGINT, signal_handler); // capture Ctrl+C
 
-  // debug
-  std::ofstream model_result_f("model_results.csv");
+  // save
   std::ofstream real_result_f("results.csv");
 
   while (running && !decoder.is_ffmpeg_exit()) {
@@ -91,6 +91,7 @@ int main(int argc, char *argv[]) {
         std::cout << "tlwh: " << t_x0 << ", " << t_y0 << ", " << t_w << ", "
                   << t_h << std::endl;
 
+        auto model_start_time = std::chrono::high_resolution_clock::now();
         ostmodel_ret =
             ostModel.preprocess(img.data(), imageW, imageH, t_x0, t_y0, t_w,
                                 t_h, search_resize_factor, search_crop_x0,
@@ -104,43 +105,23 @@ int main(int argc, char *argv[]) {
         if (ostmodel_ret != SUCCESS)
           break;
 
-        // measure results
-        float measure_x =
-            ostModel.m_outputs_f[0][0] * search_size / search_resize_factor;
-        float measure_y =
-            ostModel.m_outputs_f[0][1] * search_size / search_resize_factor;
-        float measure_w =
-            ostModel.m_outputs_f[0][2] * search_size / search_resize_factor;
-        float measure_h =
-            ostModel.m_outputs_f[0][3] * search_size / search_resize_factor;
-        if (model_result_f.is_open()) {
-          model_result_f << "model result: " << ostModel.GetCurrentImageId() << ", "
-                         << ostModel.m_outputs_f[0][0] << ", "
-                         << ostModel.m_outputs_f[0][1] << ", "
-                         << ostModel.m_outputs_f[0][2] << ", "
-                         << ostModel.m_outputs_f[0][3] << std::endl;
-        }
-        std::cout << "search_resize_factor: " << search_resize_factor
-                  << std::endl;
-
-        float measure_x0 = measure_x - measure_w / 2;
-        float measure_y0 = measure_y - measure_h / 2;
-        float measure_x0_real = search_crop_x0 + measure_x0;
-        float measure_y0_real = search_crop_y0 + measure_y0;
-        std::vector<float> tlwh_new = {measure_x0_real, measure_y0_real,
-                                       measure_w, measure_h};
-        if (real_result_f.is_open()) {
-          real_result_f << "predicted results: " << ostModel.GetCurrentImageId() << ", "
-                        << measure_x0_real << ", " << measure_y0_real << ", "
-                        << measure_w << ", " << measure_h << std::endl;
-        }
-
-        // debug
-        std::stringstream ss;
-        ss << "yuv_" << ostModel.GetCurrentImageId() << ".bin";
-        saveBinaryFile(img, ss.str());
+        std::vector<float> tlwh_new;
+        ostmodel_ret = ostModel.postprocess(search_crop_x0, search_crop_y0,
+                                            search_resize_factor, tlwh_new);
 
         (it->second).update(tlwh_new);
+
+        if (save_result && real_result_f.is_open()) {
+          real_result_f << "predicted results: " << ostModel.GetCurrentImageId()
+                        << ", " << tlwh_new[0] << ", " << tlwh_new[1] << ", "
+                        << tlwh_new[2] << ", " << tlwh_new[3] << std::endl;
+        }
+
+        auto model_end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+            model_end_time - model_start_time);
+        std::cout << "--model duration: " << duration.count() << "ms"
+                  << std::endl;
       }
     } else {
       break;
@@ -152,6 +133,7 @@ int main(int argc, char *argv[]) {
     std::cout << "--duration: " << duration.count() << "ms" << std::endl;
     template_initialized = true;
   }
-  model_result_f.close();
-  real_result_f.close();
+  if (save_result && real_result_f.is_open()) {
+    real_result_f.close();
+  }
 }

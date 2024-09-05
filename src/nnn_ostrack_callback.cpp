@@ -581,18 +581,6 @@ void NNN_Ostrack_Callback::CallbackFunc(void *data) {
   if (ret != SUCCESS) {
     std::cerr << "Device2host error" << std::endl;
   }
-  std::vector<float> outputs(4);
-  for (int i = 0; i < 4; ++i) {
-    outputs[i] = *reinterpret_cast<float *>(&m_outputs[0][4 * i]);
-  }
-
-  std::cout << "outputs: ";
-  for (auto o : outputs) {
-    std::cout << o << ", ";
-  }
-  std::cout << std::endl;
-  m_outputs_f.clear();
-  m_outputs_f.push_back(outputs);
 }
 
 Result NNN_Ostrack_Callback::CreateModelDesc() {
@@ -839,10 +827,6 @@ void sample_target(int image_w, int image_h, int x0, int y0, int h, int w,
   crop_y1 = crop_y1 - pad_b;
 
   resize_factor = (float)output_sz / crop_sz;
-  // debug
-  std::cout << "crop_sz: " << crop_sz << std::endl;
-  std::cout << "crop x0, y0, x1, y1: " << crop_x0 << ", " << crop_y0 << ", " << crop_x1 << ", " << crop_y1 << std::endl;
-  std::cout << "resize_factor: " << resize_factor << std::endl;
 }
 
 void yuv_crop(const unsigned char *img, const int imgW, const int imgH,
@@ -900,8 +884,6 @@ Result NNN_Ostrack_Callback::preprocess(
   y0 = y0 / 2 * 2;
   w = w / 2 * 2;
   h = h / 2 * 2;
-  // debug
-  // save yuv
 
   // get template
   if (updateTemplate) {
@@ -922,16 +904,6 @@ Result NNN_Ostrack_Callback::preprocess(
              template_crop_x1, template_crop_y1, template_input_size,
              template_input_size, templateData);
     m_templateData.assign(templateData.begin(), templateData.end());
-    // debug
-    std::cout << "template_crop: " << template_crop_x0 << ", "
-              << template_crop_y0 << ", " << template_crop_x1 << ", "
-              << template_crop_y1 << std::endl;
-    std::cout << "template size: " << template_input_size << std::endl;
-    std::stringstream ss;
-    ss << "template_" << m_imageId << "_" << template_crop_x0 << "-"
-       << template_crop_y0 << "-" << template_crop_x1 << "-" << template_crop_y1
-       << "_" << template_input_size << ".bin";
-    saveBinaryFile(templateData, ss.str());
 
     // set aipp for template
     int crop_w = template_crop_x1 - template_crop_x0,
@@ -944,15 +916,11 @@ Result NNN_Ostrack_Callback::preprocess(
     ret = SetAIPP(0);
     if (ret != SUCCESS)
       return ret;
-    // // copy to device
-    // ret = Host2Device(0, templateData.data(), templateData.size());
-    // if (ret != SUCCESS)
-    //   return ret;
+    // copy to device
+    ret = Host2Device(0, templateData.data(), templateData.size());
+    if (ret != SUCCESS)
+      return ret;
   }
-  // copy to device
-  ret = Host2Device(0, m_templateData.data(), m_templateData.size());
-  if (ret != SUCCESS)
-    return ret;
 
   // get search image
   int target_crop_x1, target_crop_y1, target_pad_t, target_pad_b, target_pad_l,
@@ -967,14 +935,6 @@ Result NNN_Ostrack_Callback::preprocess(
       search_input_size * search_input_size * 1.5, 0);
   yuv_crop(img, imgW, imgH, target_crop_x0, target_crop_y0, target_crop_x1,
            target_crop_y1, search_input_size, search_input_size, targetData);
-  // debug
-  std::cout << "target_crop: " << target_crop_x0 << ", " << target_crop_y0
-            << ", " << target_crop_x1 << ", " << target_crop_y1 << std::endl;
-  std::cout << "target input size: " << search_input_size << std::endl;
-  std::stringstream ss;
-  ss << "target_" << m_imageId << "_" << target_crop_x0 << "-" << target_crop_y0
-     << "-" << target_crop_x1 << "-" << target_crop_y1 << "_" << search_input_size <<  ".bin";
-  saveBinaryFile(targetData, ss.str());
 
   // set aipp for search area
   int crop_w = target_crop_x1 - target_crop_x0;
@@ -993,3 +953,41 @@ Result NNN_Ostrack_Callback::preprocess(
     return ret;
   return SUCCESS;
 }
+
+Result NNN_Ostrack_Callback::postprocess(const int search_crop_x0,
+                                         const int search_crop_y0,
+                                         const float search_resize_factor,
+                                         std::vector<float> &tlwh) {
+  // Check if output size is 16 (4 * 4-byte float)
+  if (mv_outputBuffer_sizes[0] != 16) {
+    std::cerr << "This postprocess only works for float32" << std::endl;
+    return FAILED;
+  }
+
+  // Read and convert the first 4 floats from m_outputs
+  std::array<float, 4> outputs;
+  for (int i = 0; i < 4; ++i) {
+    outputs[i] = *reinterpret_cast<float *>(&m_outputs[0][4 * i]);
+  }
+
+  // Precompute resize factor
+  const float resize_factor_inv = m_search_size / search_resize_factor;
+
+  // Calculate coordinates and dimensions
+  const float x = outputs[0] * resize_factor_inv;
+  const float y = outputs[1] * resize_factor_inv;
+  const float w = outputs[2] * resize_factor_inv;
+  const float h = outputs[3] * resize_factor_inv;
+  const float x0 = x - w / 2;
+  const float y0 = y - h / 2;
+
+  // Add search_crop offset
+  const float real_x0 = x0 + search_crop_x0;
+  const float real_y0 = y0 + search_crop_y0;
+
+  // Assign results to tlwh
+  tlwh.assign({real_x0, real_y0, w, h});
+
+  return SUCCESS;
+}
+
