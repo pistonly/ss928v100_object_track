@@ -29,3 +29,14 @@ see ~rtsp_server~
 #+end_src
 
 * hisi ss928v100: rtsp + vdec + ostrack
+
+check version b1a623b
+** see track results
+#+begin_src bash
+  cd ./out
+  ./one_camera_track
+  cd ./scripts/
+  python debug_nnn_model.py
+#+end_src
+
+

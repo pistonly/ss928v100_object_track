@@ -591,6 +591,7 @@ void NNN_Ostrack_Callback::CallbackFunc(void *data) {
     std::cout << o << ", ";
   }
   std::cout << std::endl;
+  m_outputs_f.clear();
   m_outputs_f.push_back(outputs);
 }
 
@@ -899,6 +900,9 @@ Result NNN_Ostrack_Callback::preprocess(
   y0 = y0 / 2 * 2;
   w = w / 2 * 2;
   h = h / 2 * 2;
+  // debug
+  // save yuv
+
   // get template
   if (updateTemplate) {
     float template_resize_factor;
@@ -917,6 +921,7 @@ Result NNN_Ostrack_Callback::preprocess(
     yuv_crop(img, imgW, imgH, template_crop_x0, template_crop_y0,
              template_crop_x1, template_crop_y1, template_input_size,
              template_input_size, templateData);
+    m_templateData.assign(templateData.begin(), templateData.end());
     // debug
     std::cout << "template_crop: " << template_crop_x0 << ", "
               << template_crop_y0 << ", " << template_crop_x1 << ", "
@@ -939,11 +944,15 @@ Result NNN_Ostrack_Callback::preprocess(
     ret = SetAIPP(0);
     if (ret != SUCCESS)
       return ret;
-    // copy to device
-    ret = Host2Device(0, templateData.data(), templateData.size());
-    if (ret != SUCCESS)
-      return ret;
+    // // copy to device
+    // ret = Host2Device(0, templateData.data(), templateData.size());
+    // if (ret != SUCCESS)
+    //   return ret;
   }
+  // copy to device
+  ret = Host2Device(0, m_templateData.data(), m_templateData.size());
+  if (ret != SUCCESS)
+    return ret;
 
   // get search image
   int target_crop_x1, target_crop_y1, target_pad_t, target_pad_b, target_pad_l,

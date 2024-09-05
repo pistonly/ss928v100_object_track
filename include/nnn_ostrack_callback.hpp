@@ -106,6 +106,8 @@ public:
    * @}
    */
 
+  int GetCurrentImageId() {return m_imageId;};
+
 private:
   int m_imageId{0};
   float m_template_factor, m_search_area_factor;
@@ -120,6 +122,8 @@ private:
   int m_batch;
   int m_input_num;  /**< input number of model */
   int m_output_num; /**< output number from model */
+
+  std::vector<unsigned char> m_templateData;
 
   std::vector<size_t> mv_output_sizes;
   std::vector<std::string> mv_output_names;
