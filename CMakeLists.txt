@@ -65,6 +65,12 @@ target_link_libraries(test_ostrack
   ascendcl
 )
 
+add_executable(test_ostrack_feature ./examples/test_nnn_ostrack_feature.cpp ${OST_SRC})
+target_link_libraries(test_ostrack_feature
+  ${SYSTEM_LIBS}
+  ascendcl
+)
+
 add_executable(test_opencv ./examples/test_opencv.cpp)
 
 target_link_libraries(test_opencv ${OpenCV_LIBS})
