@@ -1,6 +1,7 @@
 #include "utils.hpp"
 #include "sample_comm.h"
 #include "ss_mpi_sys.h"
+#include <iostream>
 
 void copy_yuv420_from_frame(char *yuv420, ot_video_frame_info *frame) {
   td_u32 height = frame->video_frame.height;
@@ -16,4 +17,55 @@ void copy_yuv420_from_frame(char *yuv420, ot_video_frame_info *frame) {
   }
 
   memcpy(yuv420, frame_data, size);
+}
+
+void saveBinaryFile(const std::vector<unsigned char> &data,
+                    const std::string &filePath) {
+  std::ofstream file(filePath, std::ios::binary);
+  if (file.is_open()) {
+    file.write(reinterpret_cast<const char *>(data.data()), data.size());
+  } else {
+    std::cerr << "Unable to open file " << filePath << std::endl;
+  }
+}
+
+void saveBinaryFile(const std::vector<char> &data,
+                    const std::string &filePath) {
+  std::ofstream file(filePath, std::ios::binary);
+  if (file.is_open()) {
+    file.write(data.data(), data.size());
+  } else {
+    std::cerr << "Unable to open file " << filePath << std::endl;
+  }
+}
+
+std::vector<std::vector<float>> readCSV(const std::string &filename) {
+  std::vector<std::vector<float>> data;
+  std::ifstream file(filename);
+
+  if (!file.is_open()) {
+    std::cerr << "Error: Could not open file " << filename << std::endl;
+    return data;
+  }
+
+  std::string line;
+  while (std::getline(file, line)) {
+    std::vector<float> row;
+    std::stringstream ss(line);
+    std::string cell;
+
+    while (std::getline(ss, cell, ',')) {
+      try {
+        row.push_back(std::stof(cell));
+      } catch (const std::invalid_argument &e) {
+        std::cerr << "Error: Invalid float conversion in cell: " << cell
+                  << std::endl;
+        row.push_back(0.0f); // 或者根据需要处理错误
+      }
+    }
+    data.push_back(row);
+  }
+
+  file.close();
+  return data;
 }

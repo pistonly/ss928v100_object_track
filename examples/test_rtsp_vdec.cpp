@@ -3,24 +3,12 @@
 #include <atomic>
 #include <chrono>
 #include <csignal>
-#include <iostream>
-#include <string>
-#include <vector>
-#include <thread>
 #include <fstream>
+#include <iostream>
 #include <sstream>
-
-
-void saveBinaryFile(const std::vector<unsigned char> data,
-                    const std::string filePath) {
-  std::ofstream file(filePath, std::ios::binary);
-
-  if (file.is_open()) {
-    file.write(reinterpret_cast<const char *>(data.data()), data.size());
-  } else {
-    std::cerr << "unable to open file" << filePath << std::endl;
-  }
-}
+#include <string>
+#include <thread>
+#include <vector>
 
 std::atomic<bool> running(true);
 void signal_handler(int signum) { running = false; }

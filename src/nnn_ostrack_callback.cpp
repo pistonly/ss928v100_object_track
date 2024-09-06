@@ -14,17 +14,6 @@ volatile size_t NNN_Ostrack_Callback::mg_ostrack_callbackInterval = 0;
 volatile size_t NNN_Ostrack_Callback::mg_ostrack_startCallback = 0;
 bool NNN_Ostrack_Callback::mg_ostrack_isExit = false;
 
-void static saveBinaryFile(const std::vector<unsigned char> data,
-                           const std::string filePath) {
-  std::ofstream file(filePath, std::ios::binary);
-
-  if (file.is_open()) {
-    file.write(reinterpret_cast<const char *>(data.data()), data.size());
-  } else {
-    std::cerr << "unable to open file" << filePath << std::endl;
-  }
-}
-
 NNN_Ostrack_Callback::NNN_Ostrack_Callback(const std::string &modelPath,
                                            float template_factor,
                                            float search_area_factor,
@@ -877,7 +866,6 @@ Result NNN_Ostrack_Callback::preprocess(
     const unsigned char *img, const int imgW, const int imgH, int x0, int y0,
     int w, int h, float &target_resize_factor, int &target_crop_x0,
     int &target_crop_y0, bool updateTemplate) {
-  m_imageId++;
   Result ret;
   // x y w h should be even;
   x0 = x0 / 2 * 2;

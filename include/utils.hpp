@@ -5,14 +5,17 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include "ot_common_video.h"
 #include <fstream>
-#include <stdint.h>
-#include <stddef.h>
+#include <iostream>
 #include <mutex>
 #include <queue>
+#include <sstream>
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
 #include <sys/stat.h>
-#include "ot_common_video.h"
+#include <vector>
 
 #define INFO_LOG(fmt, ...) fprintf(stdout, "[INFO]  " fmt "\n", ##__VA_ARGS__)
 #define WARN_LOG(fmt, ...) fprintf(stdout, "[WARN]  " fmt "\n", ##__VA_ARGS__)
@@ -33,16 +36,14 @@ public:
       data[i] = 0;
     }
   };
-
 };
 
-template <typename T>
-class ThreadSafeQueue{
+template <typename T> class ThreadSafeQueue {
 private:
   std::queue<T> queue;
   mutable std::mutex mutex;
 
-  public:
+public:
   ThreadSafeQueue() {}
 
   void push(T value) {
@@ -50,9 +51,9 @@ private:
     queue.push(std::move(value));
   }
 
-  bool pop(T& value) {
+  bool pop(T &value) {
     std::lock_guard<std::mutex> lock(mutex);
-    if (queue.empty()){
+    if (queue.empty()) {
       return false;
     }
     value = std::move(queue.front());
@@ -71,8 +72,7 @@ private:
   }
 };
 
-
-struct YoloModelInfo{
+struct YoloModelInfo {
   std::size_t input_size;
   int batch;
   int h;
@@ -84,7 +84,7 @@ struct YoloModelInfo{
   std::vector<std::string> v_output_names;
   std::vector<std::vector<size_t>> v_output_dims;
 
-  void save_info(const std::string& filename) {
+  void save_info(const std::string &filename) {
     std::ofstream file(filename);
     file << "input_size: " << input_size << std::endl;
     file << "batch: " << batch << std::endl;
@@ -106,14 +106,15 @@ struct YoloModelInfo{
 
     //
     file << "v_output_names: [";
-    for (auto i: v_output_names)
+    for (auto i : v_output_names)
       file << i << ", ";
     file << "]" << std::endl;
 
     //
     file << "v_output_dims:" << std::endl;
     for (auto v_i : v_output_dims) {
-      file << "  " << "- [";
+      file << "  "
+           << "- [";
       for (auto i : v_i) {
         file << i << ", ";
       }
@@ -138,5 +139,9 @@ void save_output(const std::string &output_dir, const std::string output_stem,
  * @param[in] frame Description
  */
 void copy_yuv420_from_frame(char *yuv420, ot_video_frame_info *frame);
+void saveBinaryFile(const std::vector<unsigned char> &data,
+                    const std::string &filePath);
+void saveBinaryFile(const std::vector<char> &data, const std::string &filePath);
 
+std::vector<std::vector<float>> readCSV(const std::string &filename);
 #endif

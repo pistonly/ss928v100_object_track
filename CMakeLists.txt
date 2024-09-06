@@ -57,7 +57,9 @@ set(SYSTEM_LIBS pthread m dl stdc++)
 
 add_library(hardware_decode STATIC src/ffmpeg_vdec_vpss.cpp)
 
+FILE(GLOB UTILS_SRC ./src/utils.cpp)
 FILE(GLOB OST_SRC ./src/nnn_ostrack_callback.cpp)
+
 add_executable(test_ostrack ./examples/test_nnn_ostrack.cpp ${OST_SRC})
 
 target_link_libraries(test_ostrack
@@ -80,7 +82,6 @@ include(cmake/ive_link_libs.cmake)
 
 FILE(GLOB SAMPLE_COMMON_SRC ${SAMPLE_PATH}/common/*.c)
 FILE(GLOB SVP_COMMON_SRC ./src/svp/common/*.c)
-FILE(GLOB UTILS_SRC ./src/utils.cpp)
 
 add_executable(test_rtsp_vdec ./examples/test_rtsp_vdec.cpp ${SAMPLE_COMMON_SRC} ${UTILS_SRC} ${SVP_COMMON_SRC})
 target_link_libraries(test_rtsp_vdec

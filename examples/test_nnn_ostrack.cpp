@@ -5,16 +5,6 @@
 #include <string>
 #include <vector>
 
-void saveBinaryFile(const std::vector<unsigned char> data,
-                    const std::string filePath) {
-  std::ofstream file(filePath, std::ios::binary);
-
-  if (file.is_open()) {
-    file.write(reinterpret_cast<const char *>(data.data()), data.size());
-  } else {
-    std::cerr << "unable to open file" << filePath << std::endl;
-  }
-}
 
 int main(int argc, char *argv[]) {
   // std::string omPath =
