@@ -65,7 +65,8 @@ public:
                      const size_t input_size);
   Result ExecuteRPN_Async();
   Result Execute();
-  Result postprocess(const int search_crop_x0, const int search_crop_y0, const float search_resize_factor, std::vector<float> &tlwh);
+  Result postprocess(const int search_crop_x0, const int search_crop_y0, const float search_resize_factor, std::vector<float> &tlwh,
+                     const int imgW=3840, const int imgH=2160);
 
   /**
    * @brief synchronize stream

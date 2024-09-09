@@ -9,6 +9,7 @@
 #include <iostream>
 #include <sstream>
 #include <thread>
+#include <algorithm>
 
 volatile size_t NNN_Ostrack_Callback::mg_ostrack_callbackInterval = 0;
 volatile size_t NNN_Ostrack_Callback::mg_ostrack_startCallback = 0;
@@ -805,9 +806,9 @@ void sample_target(int image_w, int image_h, int x0, int y0, int h, int w,
   crop_y1 = crop_y0 + crop_sz;
 
   pad_l = std::max(0, -crop_x0);
-  pad_r = std::max(crop_x1 - image_w + 1, 0);
+  pad_r = std::max(crop_x1 - image_w, 0);
   pad_t = std::max(0, -crop_y0);
-  pad_b = std::max(crop_y1 - image_h + 1, 0);
+  pad_b = std::max(crop_y1 - image_h, 0);
 
   // update crop
   crop_x0 = crop_x0 + pad_l;
@@ -919,6 +920,8 @@ Result NNN_Ostrack_Callback::preprocess(
                 target_crop_x1, target_crop_y1, target_pad_t, target_pad_b,
                 target_pad_l, target_pad_r, target_crop_sz);
   int search_input_size = (target_crop_sz / 16 + 1) * 16;
+  if (search_input_size > 640)
+    search_input_size = 640;
   std::vector<unsigned char> targetData(
       search_input_size * search_input_size * 1.5, 0);
   yuv_crop(img, imgW, imgH, target_crop_x0, target_crop_y0, target_crop_x1,
@@ -929,8 +932,29 @@ Result NNN_Ostrack_Callback::preprocess(
   int crop_h = target_crop_y1 - target_crop_y0;
   SetAIPPPSrcSize(search_input_size, search_input_size);
   SetAIPPCrop(0, 0, crop_w, crop_h);
+  // if (target_pad_t > 0 || target_pad_b > 0 || target_pad_l > 0 ||
+  //     target_pad_r > 0) {
+  //   int crop_target_w = crop_w * target_resize_factor;
+  //   int crop_target_h = crop_h * target_resize_factor;
+  //   crop_target_w = crop_target_w / 2 * 2;
+  //   crop_target_h = crop_target_h / 2 * 2;
+  //   crop_target_w = 176;
+  //   crop_target_h = 176;
+
+  //   SetAIPPResize(crop_w, crop_h, crop_target_w, crop_target_h);
+  //   SetAIPPPadding(0, m_search_size - crop_target_w, 0, m_search_size -
+  //   crop_target_h);
+  //   // debug
+  //   std::cout << "search input size: " << search_input_size << std::endl;
+  //   std::cout << "crop_from: " << crop_w << ", " << crop_h << std::endl;
+  //   std::cout << "crop_target: " << crop_target_w << ", " << crop_target_h <<
+  //   std::endl; std::cout << "padding: " << m_search_size - crop_target_w <<
+  //   ", " << m_search_size - crop_target_h << std::endl;
+  // } else {
+  //   SetAIPPResize(crop_w, crop_h, m_search_size, m_search_size);
+  //   SetAIPPPadding(0, 0, 0, 0);
+  // }
   SetAIPPResize(crop_w, crop_h, m_search_size, m_search_size);
-  // TODO:
   SetAIPPPadding(0, 0, 0, 0);
   ret = SetAIPP(1);
   if (ret != SUCCESS)
@@ -945,7 +969,7 @@ Result NNN_Ostrack_Callback::preprocess(
 Result NNN_Ostrack_Callback::postprocess(const int search_crop_x0,
                                          const int search_crop_y0,
                                          const float search_resize_factor,
-                                         std::vector<float> &tlwh) {
+                                         std::vector<float> &tlwh, const int imgW, const int imgH) {
   // Check if output size is 16 (4 * 4-byte float)
   if (mv_outputBuffer_sizes[0] != 16) {
     std::cerr << "This postprocess only works for float32" << std::endl;
@@ -970,8 +994,16 @@ Result NNN_Ostrack_Callback::postprocess(const int search_crop_x0,
   const float y0 = y - h / 2;
 
   // Add search_crop offset
-  const float real_x0 = x0 + search_crop_x0;
-  const float real_y0 = y0 + search_crop_y0;
+  float real_x0 = x0 + search_crop_x0;
+  float real_y0 = y0 + search_crop_y0;
+
+  // clip image
+  float real_x1 = real_x0 + w;
+  float real_y1 = real_y0 + h;
+  real_x0 = std::min(std::max(0.f, real_x0), (float)imgW);
+  real_y0 = std::min(std::max(0.f, real_y0), (float)imgH);
+  real_x1 = std::min(std::max(0.f, real_x1), (float)imgW);
+  real_y1 = std::min(std::max(0.f, real_y1), (float)imgH);
 
   // Assign results to tlwh
   tlwh.assign({real_x0, real_y0, w, h});
