@@ -321,7 +321,6 @@ HardwareDecoder::HardwareDecoder(const std::string &rtsp_url, bool step_mode)
 }
 
 HardwareDecoder::~HardwareDecoder() {
-  std::cout << "HardwareDecoder start" << std::endl;
   decoding_ = false;
   if (decode_thread_.joinable()) {
     decode_thread_.join();
@@ -331,7 +330,6 @@ HardwareDecoder::~HardwareDecoder() {
   sample_comm_sys_exit();
   avformat_close_input(&fmt_ctx_);
   avformat_network_deinit();
-  std::cout << "HardwareDecoder end" << std::endl;
 }
 
 bool HardwareDecoder::initialize_ffmpeg() {

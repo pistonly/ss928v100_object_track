@@ -40,7 +40,7 @@ public:
   ~HardwareDecoder();
 
   /**
-   * @brief Summary
+   * @brief Start hardware decoding
    * @details Description
    */
   void start_decode();

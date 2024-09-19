@@ -1,6 +1,7 @@
 #pragma once
 #include "kalmanFilter.hpp"
 #include <unordered_map>
+#include "ost_utils.hpp"
 
 class STrack {
 public:
@@ -12,6 +13,8 @@ public:
   void update(std::vector<float> tlwh_);
 
   std::vector<float> tlwh_to_xywh(std::vector<float> tlwh_tmp);
+
+  OSTTemplateData template_packet;
 
 public:
   std::vector<float> _tlwh;

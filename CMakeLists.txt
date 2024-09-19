@@ -111,3 +111,24 @@ target_link_libraries(one_camera_track
   swscale
   stdc++ # note this line is important
 )
+
+set(YOLO_PATH /home/liuyang/Documents/haisi/ai-sd3403/ai-sd3403/mpp_inference)
+include_directories(${YOLO_PATH}/include/)
+
+set(YOLO_LIB ${YOLO_PATH}/lib/libMPP_YOLOV8.a)
+FILE(GLOB YOLO_SRC ./src/yolov8.cpp)
+add_executable(one_camera_yolo_track ./examples/one_camera_yolo_track.cpp
+  ${SAMPLE_COMMON_SRC} ${UTILS_SRC} ${SVP_COMMON_SRC} ${OST_SRC} ${TRACK_SRC} ${YOLO_SRC})
+target_link_libraries(one_camera_yolo_track
+  ${SYSTEM_LIBS}
+  ${IVE_LINK_LIBS}
+  ascendcl
+  hardware_decode
+  avformat
+  avcodec
+  avutil
+  swresample
+  swscale
+  stdc++ # note this line is important
+  ${YOLO_LIB}
+)

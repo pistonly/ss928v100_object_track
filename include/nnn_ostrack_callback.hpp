@@ -18,6 +18,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include "ost_utils.hpp"
 
 /**
  * @brief Summary
@@ -60,6 +61,11 @@ public:
                     int x0, int y0, int w, int h, float &target_resize_factor,
                     int &target_crop_x0, int &target_crop_y0,
                     bool updateTemplate = false);
+
+  Result preprocess(const unsigned char *img, const int imgW, const int imgH,
+                    int x0, int y0, int w, int h, float &target_resize_factor,
+                    int &target_crop_x0, int &target_crop_y0,
+                    OSTTemplateData &template_packet);
 
   Result Host2Device(const int inputIdex, const void *inputdata,
                      const size_t input_size);

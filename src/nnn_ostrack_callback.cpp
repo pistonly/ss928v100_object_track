@@ -2,6 +2,7 @@
 #include "acl/acl.h"
 #include "acl/acl_mdl.h"
 #include "utils.hpp"
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -9,7 +10,6 @@
 #include <iostream>
 #include <sstream>
 #include <thread>
-#include <algorithm>
 
 volatile size_t NNN_Ostrack_Callback::mg_ostrack_callbackInterval = 0;
 volatile size_t NNN_Ostrack_Callback::mg_ostrack_startCallback = 0;
@@ -966,10 +966,121 @@ Result NNN_Ostrack_Callback::preprocess(
   return SUCCESS;
 }
 
+Result NNN_Ostrack_Callback::preprocess(
+    const unsigned char *img, const int imgW, const int imgH, int x0, int y0,
+    int w, int h, float &target_resize_factor, int &target_crop_x0,
+    int &target_crop_y0, OSTTemplateData &template_packet) {
+  Result ret;
+  // x y w h should be even;
+  x0 = x0 / 2 * 2;
+  y0 = y0 / 2 * 2;
+  w = w / 2 * 2;
+  h = h / 2 * 2;
+
+  // get template
+  if (!template_packet.initialized) {
+
+    float template_resize_factor;
+    int template_crop_x0, template_crop_y0, template_crop_x1, template_crop_y1,
+        template_pad_t, template_pad_b, template_pad_l, template_pad_r,
+        template_crop_sz;
+
+    sample_target(imgW, imgH, x0, y0, h, w, m_template_factor, m_template_size,
+                  template_resize_factor, template_crop_x0, template_crop_y0,
+                  template_crop_x1, template_crop_y1, template_pad_t,
+                  template_pad_b, template_pad_l, template_pad_r,
+                  template_crop_sz);
+    template_packet.template_input_size = (template_crop_sz / 16 + 1) * 16;
+    template_packet.templateData.assign(
+        template_packet.template_input_size *
+            template_packet.template_input_size * 1.5,
+        0);
+    yuv_crop(img, imgW, imgH, template_crop_x0, template_crop_y0,
+             template_crop_x1, template_crop_y1,
+             template_packet.template_input_size,
+             template_packet.template_input_size, template_packet.templateData);
+    template_packet.crop_w = template_crop_x1 - template_crop_x0;
+    template_packet.crop_h = template_crop_y1 - template_crop_y0;
+    template_packet.initialized = true;
+  }
+
+  // set aipp for template
+  SetAIPPPSrcSize(template_packet.template_input_size,
+                  template_packet.template_input_size);
+  SetAIPPCrop(0, 0, template_packet.crop_w, template_packet.crop_h);
+  SetAIPPResize(template_packet.crop_w, template_packet.crop_h, m_template_size,
+                m_template_size);
+  // TODO:
+  SetAIPPPadding(0, 0, 0, 0);
+  ret = SetAIPP(0);
+  if (ret != SUCCESS)
+    return ret;
+  // copy to device
+  ret = Host2Device(0, template_packet.templateData.data(),
+                    template_packet.templateData.size());
+  if (ret != SUCCESS)
+    return ret;
+
+  // get search image
+  int target_crop_x1, target_crop_y1, target_pad_t, target_pad_b, target_pad_l,
+      target_pad_r, target_crop_sz;
+
+  sample_target(imgW, imgH, x0, y0, h, w, m_search_area_factor, m_search_size,
+                target_resize_factor, target_crop_x0, target_crop_y0,
+                target_crop_x1, target_crop_y1, target_pad_t, target_pad_b,
+                target_pad_l, target_pad_r, target_crop_sz);
+  int search_input_size = (target_crop_sz / 16 + 1) * 16;
+  if (search_input_size > 640)
+    search_input_size = 640;
+  std::vector<unsigned char> targetData(
+      search_input_size * search_input_size * 1.5, 0);
+  yuv_crop(img, imgW, imgH, target_crop_x0, target_crop_y0, target_crop_x1,
+           target_crop_y1, search_input_size, search_input_size, targetData);
+
+  // set aipp for search area
+  int crop_w = target_crop_x1 - target_crop_x0;
+  int crop_h = target_crop_y1 - target_crop_y0;
+  SetAIPPPSrcSize(search_input_size, search_input_size);
+  SetAIPPCrop(0, 0, crop_w, crop_h);
+  // if (target_pad_t > 0 || target_pad_b > 0 || target_pad_l > 0 ||
+  //     target_pad_r > 0) {
+  //   int crop_target_w = crop_w * target_resize_factor;
+  //   int crop_target_h = crop_h * target_resize_factor;
+  //   crop_target_w = crop_target_w / 2 * 2;
+  //   crop_target_h = crop_target_h / 2 * 2;
+  //   crop_target_w = 176;
+  //   crop_target_h = 176;
+
+  //   SetAIPPResize(crop_w, crop_h, crop_target_w, crop_target_h);
+  //   SetAIPPPadding(0, m_search_size - crop_target_w, 0, m_search_size -
+  //   crop_target_h);
+  //   // debug
+  //   std::cout << "search input size: " << search_input_size << std::endl;
+  //   std::cout << "crop_from: " << crop_w << ", " << crop_h << std::endl;
+  //   std::cout << "crop_target: " << crop_target_w << ", " << crop_target_h <<
+  //   std::endl; std::cout << "padding: " << m_search_size - crop_target_w <<
+  //   ", " << m_search_size - crop_target_h << std::endl;
+  // } else {
+  //   SetAIPPResize(crop_w, crop_h, m_search_size, m_search_size);
+  //   SetAIPPPadding(0, 0, 0, 0);
+  // }
+  SetAIPPResize(crop_w, crop_h, m_search_size, m_search_size);
+  SetAIPPPadding(0, 0, 0, 0);
+  ret = SetAIPP(1);
+  if (ret != SUCCESS)
+    return ret;
+  // copy to device
+  ret = Host2Device(1, targetData.data(), targetData.size());
+  if (ret != SUCCESS)
+    return ret;
+  return SUCCESS;
+}
+
 Result NNN_Ostrack_Callback::postprocess(const int search_crop_x0,
                                          const int search_crop_y0,
                                          const float search_resize_factor,
-                                         std::vector<float> &tlwh, const int imgW, const int imgH) {
+                                         std::vector<float> &tlwh,
+                                         const int imgW, const int imgH) {
   // Check if output size is 16 (4 * 4-byte float)
   if (mv_outputBuffer_sizes[0] != 16) {
     std::cerr << "This postprocess only works for float32" << std::endl;
@@ -1010,4 +1121,3 @@ Result NNN_Ostrack_Callback::postprocess(const int search_crop_x0,
 
   return SUCCESS;
 }
-

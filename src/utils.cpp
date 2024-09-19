@@ -3,6 +3,9 @@
 #include "ss_mpi_sys.h"
 #include <iostream>
 
+// 全局日志器实例，初始日志级别为 INFO
+Logger logger(INFO);
+
 void copy_yuv420_from_frame(char *yuv420, ot_video_frame_info *frame) {
   td_u32 height = frame->video_frame.height;
   td_u32 width = frame->video_frame.width;
