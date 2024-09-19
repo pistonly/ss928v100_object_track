@@ -2,11 +2,11 @@
 #include "yolov8.hpp"
 #include "post_process_tools.hpp"
 #include <vector>
+#include <iostream>
 
 extern Logger logger;
 
-YOLOV8::YOLOV8(const std::string &modelPath,
-               const std::string &output_dir,
+YOLOV8::YOLOV8(const std::string &modelPath, const std::string &output_dir,
                const std::string &aclJSON)
     : NNNYOLOV8(modelPath, aclJSON) {
   char c_output_dir[PATH_MAX];
@@ -25,7 +25,8 @@ YOLOV8::YOLOV8(const std::string &modelPath,
     logger.log(INFO, "size of output_", i, ": ", outbuf_size[i]);
   }
 
-  GetModelInfo(nullptr, &m_input_h, &m_input_w, nullptr, nullptr, &mv_outputs_dim);
+  GetModelInfo(nullptr, &m_input_h, &m_input_w, nullptr, nullptr,
+               &mv_outputs_dim);
   input_yuv.resize(m_input_h * m_input_w * 1.5);
   for (auto &dim_i : mv_outputs_dim) {
     std::stringstream ss;
@@ -47,13 +48,14 @@ void YOLOV8::set_postprocess_parameters(float conf_thres, float iou_thres,
 void YOLOV8::set_roi_parameters(int left, int top, float scale) {
   m_topleft.first = left;
   m_topleft.second = top;
-  m_scale = m_scale;
+  m_scale = scale;
 }
 
 void YOLOV8::post_process(std::vector<std::vector<std::vector<half>>> &det_bbox,
                           std::vector<std::vector<half>> &det_conf,
                           std::vector<std::vector<half>> &det_cls) {
 
+  std::cout << "post_process.D2H ..." << std::endl;
   std::vector<const char *> vp_outputs;
   Result ret = Device2Host(vp_outputs);
   if (ret != SUCCESS) {
@@ -61,6 +63,7 @@ void YOLOV8::post_process(std::vector<std::vector<std::vector<half>>> &det_bbox,
     return;
   }
 
+  std::cout << "post_process.split ..." << std::endl;
   split_bbox_conf_reduced(vp_outputs, mv_outputs_dim, mvp_bbox, mvp_conf,
                           mvp_cls);
 
@@ -72,17 +75,24 @@ void YOLOV8::post_process(std::vector<std::vector<std::vector<half>>> &det_bbox,
     const std::vector<const half *> &bbox_batch_i = mvp_bbox[i];
     const std::vector<const half *> &conf_batch_i = mvp_conf[i];
     const std::vector<const half *> &cls_batch_i = mvp_cls[i];
+    std::cout << "post_process.NMS ..., batch_num: " << batch_num << std::endl;
     NMS_bboxTranspose(box_num, bbox_batch_i, conf_batch_i, cls_batch_i,
                       det_bbox[i], det_conf[i], det_cls[i], m_conf_thres,
                       m_iou_thres, m_max_det);
 
+    std::cout << "post_process.change_to_real ... " << batch_num << std::endl;
     // change to real location
-    for (auto j = 0; i < det_bbox[i].size(); ++j) {
+    std::cout << "m_topleft: " << m_topleft.first << ", " << m_topleft.second << std::endl;
+    std::cout << "m_scale: " << m_scale << std::endl;
+    for (auto j = 0; j < det_bbox[i].size(); ++j) {
       std::vector<half> &box = det_bbox[i][j];
       box[0] = m_scale * box[0] + m_topleft.first;
       box[1] = m_scale * box[1] + m_topleft.second;
       box[2] = m_scale * box[2] + m_topleft.first;
       box[3] = m_scale * box[3] + m_topleft.second;
+      std::cout << box.at(0) << ", " << box.at(1) << ", " << box.at(2) << ", "
+                << box.at(3) << ", " << det_conf[i][j] << ", " << det_cls[i][j]
+                << std::endl;
     }
   }
 }
@@ -92,6 +102,8 @@ bool YOLOV8::process_one_image(
     std::vector<std::vector<std::vector<half>>> &det_bbox,
     std::vector<std::vector<half>> &det_conf,
     std::vector<std::vector<half>> &det_cls) {
+
+  std::cout << "cutting yolov8 roi ..." << std::endl;
   // cut image roi
   int x0 = m_topleft.first;
   int y0 = m_topleft.second;
@@ -121,14 +133,16 @@ bool YOLOV8::process_one_image(
     }
   }
 
+  std::cout << "yolov8 H2D ..." << std::endl;
   // host to device
   Host2Device(input_yuv.data(), input_yuv.size());
 
+  std::cout << "yolov8 inferencing ..." << std::endl;
   // inference
   Execute();
 
+  std::cout << "yolov8 postprocessing ..." << std::endl;
   // postprocess
   post_process(det_bbox, det_conf, det_cls);
-
-
+  return true;
 }

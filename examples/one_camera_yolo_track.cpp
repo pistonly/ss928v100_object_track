@@ -79,7 +79,7 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
                           std::vector<std::vector<std::vector<half>>> &det_bbox,
                           std::vector<std::vector<half>> &cls,
                           bool using_kal_filter, int track_max_num = 6,
-                          int selected_id = 0) {
+                          int selected_id = 1) {
   int needed_track_num = track_max_num - tracks.size();
   int added_num = 0;
   const std::vector<std::vector<half>> &det_bbox_batch0 = det_bbox[0];
@@ -220,10 +220,11 @@ int main(int argc, char *argv[]) {
 
       if (imageId % 10 == 0 && trackers.size() < 6) {
         // add new trackers
+        std::cout << "yolov8 processing ..." << std::endl;
         yolov8.process_one_image(reinterpret_cast<unsigned char *>(img.data()),
-                                 imageW, imageH,
-                                 det_bbox, det_conf, det_cls);
-        add_tracks_from_dets(trackers, det_bbox, det_cls, using_kal_filter);
+                                 imageW, imageH, det_bbox, det_conf, det_cls);
+        std::cout << "add tracks ... " << std::endl;
+        add_tracks_from_dets(trackers, det_bbox, det_cls, using_kal_filter, 6, 1);
       }
 
       // Use Kalman filter if enabled

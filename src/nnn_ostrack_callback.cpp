@@ -65,10 +65,11 @@ Result NNN_Ostrack_Callback::InitResource() {
   // ACL init
   aclError ret = aclInit(m_aclJSON.c_str());
   if (ret != ACL_SUCCESS) {
-    ERROR_LOG("nnn acl init failed");
-    return FAILED;
+    ERROR_LOG("nnn ostrack acl init failed");
+    // return FAILED;
+  } else {
+    INFO_LOG("nnn acl init success");
   }
-  INFO_LOG("nnn acl init success");
 
   // set device
   ret = aclrtSetDevice(m_deviceId);
@@ -80,6 +81,8 @@ Result NNN_Ostrack_Callback::InitResource() {
 
   // create context (set current)
   ret = aclrtCreateContext(&m_context, m_deviceId);
+  INFO_LOG("nnn ostrack context: ", m_context);
+
   if (ret != ACL_SUCCESS) {
     ERROR_LOG("nnn create context failed");
     return FAILED;
