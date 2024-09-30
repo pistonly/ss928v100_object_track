@@ -61,7 +61,7 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
     tr.update(tlwh_new);
 
     if (save_result && real_result_f.is_open()) {
-      real_result_f << "predicted results: " << imageId << ", " << trackerId
+      real_result_f << imageId << ", " << trackerId
                     << ", " << tlwh_new[0] << ", " << tlwh_new[1] << ", "
                     << tlwh_new[2] << ", " << tlwh_new[3] << std::endl;
     }
@@ -208,6 +208,11 @@ int main(int argc, char *argv[]) {
 
   // Save results
   std::ofstream real_result_f(output_dir + "results.csv");
+  if (!real_result_f) {
+    logger.log(ERROR, "opening file for writing: ", output_dir + "results.csv");
+  } else {
+    real_result_f << "imageId,trackerId,l,t,w,h" << std::endl;
+  }
 
   int imageId = 0;
   while (running && !decoder.is_ffmpeg_exit()) {
