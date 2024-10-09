@@ -18,18 +18,33 @@ using half_float::half;
 using json = nlohmann::json;
 extern Logger logger;
 
+#define IMAGE_HEIGHT 2160
+#define IMAGE_WIDTH 3840
+
 std::atomic<bool> running(true);
 void signal_handler(int signum) { running = false; }
 int track_id = 0;
+
+bool isAtImageEdge(std::vector<float> tlwh, int threshold = 5) {
+  const float x0 = tlwh[0];
+  const float y0 = tlwh[1];
+  const float x1 = x0 + tlwh[2];
+  const float y1 = y0 + tlwh[3];
+  if (x0 < threshold || y0 < threshold || x1 > (IMAGE_WIDTH - threshold) ||
+      y1 > (IMAGE_HEIGHT - threshold))
+    return true;
+  return false;
+}
+
 
 void processTrackers(std::unordered_map<int, STrack> &trackers,
                      NNN_Ostrack_Callback &ostModel,
                      const std::vector<unsigned char> &img, int imageW,
                      int imageH, int imageId, bool &template_initialized,
                      std::ofstream &real_result_f, bool save_result) {
-  for (auto &tracker_pair : trackers) {
-    int trackerId = tracker_pair.first;
-    auto &tr = tracker_pair.second;
+  for (auto it = trackers.begin(); it != trackers.end();) {
+    int trackerId = it->first;
+    auto &tr = it->second;
     auto &tlwh = tr._tlwh;
     int t_x0 = static_cast<int>(tlwh[0]);
     int t_y0 = static_cast<int>(tlwh[1]);
@@ -44,26 +59,29 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
     if (ostModel.preprocess(img.data(), imageW, imageH, t_x0, t_y0, t_w, t_h,
                             search_resize_factor, search_crop_x0,
                             search_crop_y0, tr.template_packet) != SUCCESS) {
-      return;
+      ++it;
+      continue;
     }
 
     if (ostModel.ExecuteRPN_Async() != SUCCESS ||
         ostModel.SynchronizeStream() != SUCCESS) {
-      return;
+      ++it;
+      continue;
     }
 
     std::vector<float> tlwh_new;
     if (ostModel.postprocess(search_crop_x0, search_crop_y0,
                              search_resize_factor, tlwh_new) != SUCCESS) {
-      return;
+      ++it;
+      continue;
     }
 
     tr.update(tlwh_new);
 
     if (save_result && real_result_f.is_open()) {
-      real_result_f << imageId << ", " << trackerId
-                    << ", " << tlwh_new[0] << ", " << tlwh_new[1] << ", "
-                    << tlwh_new[2] << ", " << tlwh_new[3] << std::endl;
+      real_result_f << imageId << ", " << trackerId << ", " << tr._tlwh[0]
+                    << ", " << tr._tlwh[1] << ", " << tr._tlwh[2] << ", "
+                    << tr._tlwh[3] << std::endl;
     }
 
     auto model_end_time = std::chrono::high_resolution_clock::now();
@@ -72,8 +90,16 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
                      model_end_time - model_start_time)
                      .count()
               << "ms" << std::endl;
+
+    // 检查目标是否在图像边缘，如果是则移除该追踪器
+    if (isAtImageEdge(tr._tlwh)) {
+      it = trackers.erase(it);
+    } else {
+      ++it;
+    }
   }
 }
+
 
 void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
                           std::vector<std::vector<std::vector<half>>> &det_bbox,
@@ -171,8 +197,8 @@ int main(int argc, char *argv[]) {
 
   // VDEC source
   std::string rtsp_url = config_data["rtsp_url"];
-  const int imageH = 2160;
-  const int imageW = 3840;
+  const int imageH = IMAGE_HEIGHT;
+  const int imageW = IMAGE_WIDTH;
   const int IMAGE_SIZE = imageH * imageW * 1.5;
 
   // Initialize decoder
@@ -229,7 +255,8 @@ int main(int argc, char *argv[]) {
         yolov8.process_one_image(reinterpret_cast<unsigned char *>(img.data()),
                                  imageW, imageH, det_bbox, det_conf, det_cls);
         std::cout << "add tracks ... " << std::endl;
-        add_tracks_from_dets(trackers, det_bbox, det_cls, using_kal_filter, 6, 1);
+        add_tracks_from_dets(trackers, det_bbox, det_cls, using_kal_filter, 6,
+                             1);
       }
 
       // Use Kalman filter if enabled
