@@ -60,6 +60,8 @@ private:
   std::mutex mtx; // 保证多线程环境下日志输出的原子性
 };
 
+extern Logger logger;
+
 #define INFO_LOG(fmt, ...) fprintf(stdout, "[INFO]  " fmt "\n", ##__VA_ARGS__)
 #define WARN_LOG(fmt, ...) fprintf(stdout, "[WARN]  " fmt "\n", ##__VA_ARGS__)
 #define ERROR_LOG(fmt, ...) fprintf(stdout, "[ERROR] " fmt "\n", ##__VA_ARGS__)
@@ -187,4 +189,30 @@ void saveBinaryFile(const std::vector<unsigned char> &data,
 void saveBinaryFile(const std::vector<char> &data, const std::string &filePath);
 
 std::vector<std::vector<float>> readCSV(const std::string &filename);
+
+#ifdef ENABLE_TIMER
+class Timer {
+public:
+  Timer(const std::string &name)
+      : name_(name), start_(std::chrono::high_resolution_clock::now()) {}
+  ~Timer() {
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration =
+        std::chrono::duration_cast<std::chrono::milliseconds>(end - start_)
+            .count();
+    logger.log(DEBUG, name_, " took ", duration, " ms");
+  }
+
+private:
+  std::string name_;
+  std::chrono::time_point<std::chrono::high_resolution_clock> start_;
+};
+#else
+// 当没有启用 Timer 时，Timer 是一个空类，不做任何操作
+class Timer {
+public:
+  Timer(const std::string &) {}
+};
+#endif
+
 #endif

@@ -5,6 +5,14 @@ project(one_camera_track)
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 add_definitions(-DSENSOR0_TYPE=OV_OS08A20_MIPI_8M_30FPS_12BIT)
 
+# 添加一个选项用于控制 ENABLE_TIMER 是否被定义
+option(ENABLE_TIMER "Enable the Timer class" ON)
+
+# 根据选项定义宏 ENABLE_TIMER
+if(ENABLE_TIMER)
+  add_definitions(-DENABLE_TIMER)
+endif()
+
 set(CMAKE_C_COMPILER "aarch64-mix210-linux-gcc")
 set(CMAKE_CXX_COMPILER "aarch64-mix210-linux-g++")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/out")

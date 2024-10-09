@@ -36,7 +36,6 @@ bool isAtImageEdge(std::vector<float> tlwh, int threshold = 5) {
   return false;
 }
 
-
 void processTrackers(std::unordered_map<int, STrack> &trackers,
                      NNN_Ostrack_Callback &ostModel,
                      const std::vector<unsigned char> &img, int imageW,
@@ -53,43 +52,37 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
 
     float search_resize_factor;
     int search_crop_x0, search_crop_y0;
-
-    auto model_start_time = std::chrono::high_resolution_clock::now();
-
-    if (ostModel.preprocess(img.data(), imageW, imageH, t_x0, t_y0, t_w, t_h,
-                            search_resize_factor, search_crop_x0,
-                            search_crop_y0, tr.template_packet) != SUCCESS) {
-      ++it;
-      continue;
-    }
-
-    if (ostModel.ExecuteRPN_Async() != SUCCESS ||
-        ostModel.SynchronizeStream() != SUCCESS) {
-      ++it;
-      continue;
-    }
-
     std::vector<float> tlwh_new;
-    if (ostModel.postprocess(search_crop_x0, search_crop_y0,
-                             search_resize_factor, tlwh_new) != SUCCESS) {
-      ++it;
-      continue;
-    }
 
-    tr.update(tlwh_new);
+    {
+      Timer timer("model duration");
+      if (ostModel.preprocess(img.data(), imageW, imageH, t_x0, t_y0, t_w, t_h,
+                              search_resize_factor, search_crop_x0,
+                              search_crop_y0, tr.template_packet) != SUCCESS) {
+        ++it;
+        continue;
+      }
+
+      if (ostModel.ExecuteRPN_Async() != SUCCESS ||
+          ostModel.SynchronizeStream() != SUCCESS) {
+        ++it;
+        continue;
+      }
+
+      if (ostModel.postprocess(search_crop_x0, search_crop_y0,
+                               search_resize_factor, tlwh_new) != SUCCESS) {
+        ++it;
+        continue;
+      }
+
+      tr.update(tlwh_new);
+    }
 
     if (save_result && real_result_f.is_open()) {
       real_result_f << imageId << ", " << trackerId << ", " << tr._tlwh[0]
                     << ", " << tr._tlwh[1] << ", " << tr._tlwh[2] << ", "
                     << tr._tlwh[3] << std::endl;
     }
-
-    auto model_end_time = std::chrono::high_resolution_clock::now();
-    std::cout << "--model duration: "
-              << std::chrono::duration_cast<std::chrono::milliseconds>(
-                     model_end_time - model_start_time)
-                     .count()
-              << "ms" << std::endl;
 
     // 检查目标是否在图像边缘，如果是则移除该追踪器
     if (isAtImageEdge(tr._tlwh)) {
@@ -99,7 +92,6 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
     }
   }
 }
-
 
 void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
                           std::vector<std::vector<std::vector<half>>> &det_bbox,
@@ -242,42 +234,38 @@ int main(int argc, char *argv[]) {
 
   int imageId = 0;
   while (running && !decoder.is_ffmpeg_exit()) {
-    auto start_time = std::chrono::high_resolution_clock::now();
+    {
+      Timer timer("process one frame");
+      if (decoder.get_frame_without_release()) {
+        std::cout << "Got one frame" << std::endl;
+        copy_yuv420_from_frame(reinterpret_cast<char *>(img.data()),
+                               &decoder.frame_H);
 
-    if (decoder.get_frame_without_release()) {
-      std::cout << "Got one frame" << std::endl;
-      copy_yuv420_from_frame(reinterpret_cast<char *>(img.data()),
-                             &decoder.frame_H);
+        if (imageId % 10 == 0 && trackers.size() < 6) {
+          // add new trackers
+          std::cout << "yolov8 processing ..." << std::endl;
+          yolov8.process_one_image(
+              reinterpret_cast<unsigned char *>(img.data()), imageW, imageH,
+              det_bbox, det_conf, det_cls);
+          std::cout << "add tracks ... " << std::endl;
+          add_tracks_from_dets(trackers, det_bbox, det_cls, using_kal_filter, 6,
+                               1);
+        }
 
-      if (imageId % 10 == 0 && trackers.size() < 6) {
-        // add new trackers
-        std::cout << "yolov8 processing ..." << std::endl;
-        yolov8.process_one_image(reinterpret_cast<unsigned char *>(img.data()),
-                                 imageW, imageH, det_bbox, det_conf, det_cls);
-        std::cout << "add tracks ... " << std::endl;
-        add_tracks_from_dets(trackers, det_bbox, det_cls, using_kal_filter, 6,
-                             1);
+        // Use Kalman filter if enabled
+        if (using_kal_filter) {
+          STrack::multi_predict(trackers);
+        }
+
+        processTrackers(trackers, ostModel, img, imageW, imageH, imageId++,
+                        template_initialized, real_result_f, save_result);
+
+      } else {
+        break;
       }
 
-      // Use Kalman filter if enabled
-      if (using_kal_filter) {
-        STrack::multi_predict(trackers);
-      }
-
-      processTrackers(trackers, ostModel, img, imageW, imageH, imageId++,
-                      template_initialized, real_result_f, save_result);
-
-    } else {
-      break;
+      decoder.release_frames();
     }
-
-    decoder.release_frames();
-    auto end_time = std::chrono::high_resolution_clock::now();
-    std::cout << "--duration: "
-              << std::chrono::duration_cast<std::chrono::milliseconds>(
-                     end_time - start_time)
-                     .count()
-              << "ms" << std::endl;
 
     template_initialized = false;
   }
