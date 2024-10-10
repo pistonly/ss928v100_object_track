@@ -1,0 +1,25 @@
+{
+    "rtsp_url": "rtsp://172.23.24.52:8554/test",
+    "om_path": "../models/MyViTrack_ep0100_192_L3.om",
+    "yolov8_om_path": "../models/yolov8n_best_kxw_1088x1920_FP16.om",
+    "tcp_id": "172.23.24.52",
+    "tcp_port": "8880",
+    "output_dir": "/mnt/data/sot/",
+    "save_result": true,
+    "decode_step_mode": true,
+    "conf_thres": 0.1,
+    "log_level": "DEBUG",
+    "yolov8_roi_left": 960,
+    "yolov8_roi_top": 540,
+    "yolov8_scale": 1.0,
+    "selected_det_id": 1,
+    "max_det": 20,
+    "yolov8_time_interval": 1,
+
+    "template_factor": 1.6,
+    "search_area_factor": 4,
+    "template_size": 96,
+    "search_size": 192,
+
+    "max_tracker_num": 6,
+}

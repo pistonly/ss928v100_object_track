@@ -220,6 +220,11 @@ int main(int argc, char *argv[]) {
   int search_size = config_data["search_size"];
   bool save_result = config_data["save_result"];
   std::string output_dir = config_data["output_dir"];
+  int yolov8_time_interval =
+    config_data["yolov8_time_interval"]; // s
+  yolov8_time_interval *= 1000000; // us
+  int selected_det_id = config_data["selected_det_id"];
+  int max_tracker_num = config_data["max_tracker_num"];
 
   // VDEC source
   std::string rtsp_url = config_data["rtsp_url"];
@@ -281,14 +286,14 @@ int main(int argc, char *argv[]) {
       copy_yuv420_from_frame(reinterpret_cast<char *>(img.data()), &frame_ch0);
 
       if (trackers_ch0.size() < 6 &&
-          (frame_ch0.video_frame.pts - last_yolo_ts_ch0) > 1000000) {
+          (frame_ch0.video_frame.pts - last_yolo_ts_ch0) >
+              yolov8_time_interval) {
         logger.log(INFO, "yolov8 processing ...");
         yolov8.process_one_image(reinterpret_cast<unsigned char *>(img.data()),
                                  imageW, imageH, det_bbox, det_conf, det_cls);
         logger.log(INFO, "add tracks ...");
-        // TODO: get track_max_num, selected_id from JSON
-        add_tracks_from_dets(trackers_ch0, det_bbox, det_cls, using_kal_filter, 6,
-                             1);
+        add_tracks_from_dets(trackers_ch0, det_bbox, det_cls, using_kal_filter,
+                             max_tracker_num, selected_det_id);
       }
 
       // Use Kalman filter if enabled
@@ -313,14 +318,14 @@ int main(int argc, char *argv[]) {
       copy_yuv420_from_frame(reinterpret_cast<char *>(img.data()), &frame_ch1);
 
       if (trackers_ch1.size() < 6 &&
-          (frame_ch0.video_frame.pts - last_yolo_ts_ch0) > 1000000) {
+          (frame_ch0.video_frame.pts - last_yolo_ts_ch0) >
+              yolov8_time_interval) {
         logger.log(INFO, "yolov8 processing ...");
         yolov8.process_one_image(reinterpret_cast<unsigned char *>(img.data()),
                                  imageW, imageH, det_bbox, det_conf, det_cls);
         logger.log(INFO, "add tracks ...");
-        // TODO: get track_max_num, selected_id from JSON
-        add_tracks_from_dets(trackers_ch1, det_bbox, det_cls, using_kal_filter, 6,
-                             1);
+        add_tracks_from_dets(trackers_ch1, det_bbox, det_cls, using_kal_filter,
+                             max_tracker_num, selected_det_id);
       }
 
       // Use Kalman filter if enabled
