@@ -215,4 +215,8 @@ public:
 };
 #endif
 
+std::string getIPAddressUsingIfconfig();
+
+uint8_t getCameraId();
+
 #endif
