@@ -219,4 +219,11 @@ std::string getIPAddressUsingIfconfig();
 
 uint8_t getCameraId();
 
+void send_track_result(int sock,
+                       const std::vector<std::vector<float>> &tracker_res,
+                       uint8_t cameraId, uint64_t ts);
+void save_one_track_result_csv(
+    std::ofstream &outFile, const std::vector<std::vector<float>> &tracker_res,
+    uint8_t cameraId, uint64_t ts);
+
 #endif

@@ -1,7 +1,13 @@
 #include "utils.hpp"
 #include "sample_comm.h"
 #include "ss_mpi_sys.h"
+#include <cassert>
+#include <fstream>
 #include <iostream>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <vector>
 
 // 全局日志器实例，初始日志级别为 INFO
 Logger logger(INFO);
@@ -107,4 +113,55 @@ uint8_t getCameraId() {
   }
   std::string lastOctetStr = ipAddress.substr(lastDotPos + 1);
   return static_cast<uint8_t>(std::stoi(lastOctetStr));
+}
+
+// tracker_res: left, top, w, h, confidence=0, tracker_id
+std::vector<char>
+serialize_track_results(const std::vector<std::vector<float>> &tracker_res,
+                        const uint8_t cameraId, const uint64_t timestamp) {
+  std::vector<char> buffer;
+  // total size
+  unsigned int len = 13 + 24 * tracker_res.size();
+  buffer.insert(buffer.end(), reinterpret_cast<const char *>(&len),
+                reinterpret_cast<const char *>(&len) + sizeof(len));
+  // cameraId
+  buffer.insert(buffer.end(), reinterpret_cast<const char *>(&cameraId),
+                reinterpret_cast<const char *>(&cameraId) + sizeof(cameraId));
+
+  // time stamp
+  buffer.insert(buffer.end(), reinterpret_cast<const char *>(&timestamp),
+                reinterpret_cast<const char *>(&timestamp) + sizeof(timestamp));
+
+  // bboxes
+  for (auto &dec : tracker_res) {
+    assert(dec.size() == 6);
+    for (float value : dec) {
+      buffer.insert(buffer.end(), reinterpret_cast<const char *>(&value),
+                    reinterpret_cast<const char *>(&value) + sizeof(value));
+    }
+  }
+
+  assert(sizeof(len) + sizeof(cameraId) + sizeof(timestamp) == 13);
+  return buffer;
+}
+
+void send_track_result(int sock,
+                       const std::vector<std::vector<float>> &tracker_res,
+                       uint8_t cameraId, uint64_t ts) {
+  std::vector<char> serialized_data =
+      serialize_track_results(tracker_res, cameraId, ts);
+  send(sock, serialized_data.data(), serialized_data.size(), 0);
+}
+
+void save_one_track_result_csv(
+    std::ofstream &outFile, const std::vector<std::vector<float>> &tracker_res,
+    uint8_t cameraId, uint64_t ts) {
+  for (auto &dec : tracker_res) {
+    int i = 0;
+    outFile << static_cast<int>(cameraId) << "," << ts << ",";
+    for (; i < dec.size() - 1; ++i) {
+      outFile << dec[i] << ",";
+    }
+    outFile << dec[i] << std::endl;
+  }
 }

@@ -2,6 +2,7 @@
 #include "nnn_ostrack_callback.hpp"
 #include "post_process_tools.hpp"
 #include "ss_mpi_vpss.h"
+#include "tcp_tools.hpp"
 #include "utils.hpp"
 #include "yolov8.hpp"
 #include <atomic>
@@ -73,8 +74,8 @@ bool isAtImageEdge(std::vector<float> tlwh, int threshold = 5) {
 void processTrackers(std::unordered_map<int, STrack> &trackers,
                      NNN_Ostrack_Callback &ostModel,
                      const std::vector<unsigned char> &img, int imageW,
-                     int imageH, int imageId, std::ofstream &real_result_f,
-                     bool save_result) {
+                     int imageH, uint8_t cameraId, uint64_t timestamp,
+                     std::ofstream &real_result_f, bool save_result, int sock) {
   for (auto it = trackers.begin(); it != trackers.end();) {
     int trackerId = it->first;
     auto &tr = it->second;
@@ -112,10 +113,18 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
       tr.update(tlwh_new);
     }
 
+    std::vector<std::vector<float>> track_res(
+        {{tr._tlwh[0], tr._tlwh[1], tr._tlwh[2], tr._tlwh[3], 0.f, trackerId}});
+
     if (save_result && real_result_f.is_open()) {
-      real_result_f << imageId << ", " << trackerId << ", " << tr._tlwh[0]
-                    << ", " << tr._tlwh[1] << ", " << tr._tlwh[2] << ", "
-                    << tr._tlwh[3] << std::endl;
+      save_one_track_result_csv(real_result_f, track_res, cameraId, timestamp);
+      // real_result_f << imageId << ", " << trackerId << ", " << tr._tlwh[0]
+      //               << ", " << tr._tlwh[1] << ", " << tr._tlwh[2] << ", "
+      //               << tr._tlwh[3] << std::endl;
+    }
+
+    if (sock != -1) {
+      send_track_result(sock, track_res, cameraId, timestamp);
     }
 
     // 检查目标是否在图像边缘，如果是则移除该追踪器
@@ -202,9 +211,9 @@ int main(int argc, char *argv[]) {
   }
 
   std::vector<std::string> required_keys = {
-      "rtsp_url",        "om_path",        "yolov8_om_path", "tcp_id",
-      "tcp_port",        "output_dir",     "save_result",    "decode_step_mode",
-      "yolov8_roi_left", "yolov8_roi_top", "yolov8_scale"};
+      "om_path",        "yolov8_om_path", "tcp_ip",           "tcp_port",
+      "output_dir",     "save_result",    "decode_step_mode", "yolov8_roi_left",
+      "yolov8_roi_top", "yolov8_scale"};
   for (const auto &key : required_keys) {
     if (!config_data.contains(key)) {
       logger.log(ERROR, "Can't find key: ", key);
@@ -220,17 +229,21 @@ int main(int argc, char *argv[]) {
   int search_size = config_data["search_size"];
   bool save_result = config_data["save_result"];
   std::string output_dir = config_data["output_dir"];
-  int yolov8_time_interval =
-    config_data["yolov8_time_interval"]; // s
-  yolov8_time_interval *= 1000000; // us
+  int yolov8_time_interval = config_data["yolov8_time_interval"]; // s
+  yolov8_time_interval *= 1000000;                                // us
   int selected_det_id = config_data["selected_det_id"];
   int max_tracker_num = config_data["max_tracker_num"];
 
   // VDEC source
-  std::string rtsp_url = config_data["rtsp_url"];
   const int imageH = IMAGE_HEIGHT;
   const int imageW = IMAGE_WIDTH;
   const int IMAGE_SIZE = imageH * imageW * 1.5;
+
+  // tcp
+  std::string tcp_ip = config_data["tcp_ip"];
+  std::string tcp_port = config_data["tcp_port"];
+  TCP tcp_obj;
+  tcp_obj.connect_to_tcp(tcp_ip, std::stoi(tcp_port));
 
   // yolov8
   const int yolov8_roi_left = config_data["yolov8_roi_left"];
@@ -246,6 +259,8 @@ int main(int argc, char *argv[]) {
   std::vector<std::vector<std::vector<half>>> det_bbox(batch_num);
   std::vector<std::vector<half>> det_conf(batch_num);
   std::vector<std::vector<half>> det_cls(batch_num);
+
+  uint8_t cameraId = getCameraId();
 
   // Initialize OST model
   NNN_Ostrack_Callback ostModel(omPath, template_factor, search_area_factor,
@@ -268,10 +283,9 @@ int main(int argc, char *argv[]) {
   if (!real_result_f) {
     logger.log(ERROR, "opening file for writing: ", output_dir + "results.csv");
   } else {
-    real_result_f << "imageId,trackerId,l,t,w,h" << std::endl;
+    real_result_f << "cameraId,timestamp,trackerId,l,t,w,h" << std::endl;
   }
 
-  int imageId = 0;
   uint64_t last_yolo_ts_ch0 = 0, last_yolo_ts_ch1 = 0;
   while (running) {
     {
@@ -279,6 +293,7 @@ int main(int argc, char *argv[]) {
       // process first channel
       // get one frame
       int current_ch = 0;
+      uint8_t current_cameraId = cameraId;
       if (!process_frames(frame_ch0, current_ch)) {
         break;
       }
@@ -301,8 +316,9 @@ int main(int argc, char *argv[]) {
         STrack::multi_predict(trackers_ch0);
       }
 
-      processTrackers(trackers_ch0, ostModel, img, imageW, imageH, imageId++,
-                      real_result_f, save_result);
+      processTrackers(trackers_ch0, ostModel, img, imageW, imageH,
+                      current_cameraId, frame_ch0.video_frame.pts,
+                      real_result_f, save_result, tcp_obj.m_sock);
 
       process_frames(frame_ch0, current_ch, true);
     }
@@ -311,6 +327,7 @@ int main(int argc, char *argv[]) {
       // process first channel
       // get one frame
       int current_ch = 1;
+      uint8_t current_cameraId = cameraId + 100;
       if (!process_frames(frame_ch0, current_ch)) {
         break;
       }
@@ -333,8 +350,9 @@ int main(int argc, char *argv[]) {
         STrack::multi_predict(trackers_ch1);
       }
 
-      processTrackers(trackers_ch1, ostModel, img, imageW, imageH, imageId++,
-                      real_result_f, save_result);
+      processTrackers(trackers_ch1, ostModel, img, imageW, imageH,
+                      current_cameraId, frame_ch1.video_frame.pts,
+                      real_result_f, save_result, tcp_obj.m_sock);
 
       process_frames(frame_ch1, current_ch, true);
     }
