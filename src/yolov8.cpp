@@ -1,8 +1,8 @@
-#include "utils.hpp"
 #include "yolov8.hpp"
 #include "post_process_tools.hpp"
-#include <vector>
+#include "utils.hpp"
 #include <iostream>
+#include <vector>
 
 extern Logger logger;
 
@@ -82,7 +82,8 @@ void YOLOV8::post_process(std::vector<std::vector<std::vector<half>>> &det_bbox,
 
     std::cout << "post_process.change_to_real ... " << batch_num << std::endl;
     // change to real location
-    std::cout << "m_topleft: " << m_topleft.first << ", " << m_topleft.second << std::endl;
+    std::cout << "m_topleft: " << m_topleft.first << ", " << m_topleft.second
+              << std::endl;
     std::cout << "m_scale: " << m_scale << std::endl;
     for (auto j = 0; j < det_bbox[i].size(); ++j) {
       std::vector<half> &box = det_bbox[i][j];
@@ -136,6 +137,26 @@ bool YOLOV8::process_one_image(
   std::cout << "yolov8 H2D ..." << std::endl;
   // host to device
   Host2Device(input_yuv.data(), input_yuv.size());
+
+  std::cout << "yolov8 inferencing ..." << std::endl;
+  // inference
+  Execute();
+
+  std::cout << "yolov8 postprocessing ..." << std::endl;
+  // postprocess
+  post_process(det_bbox, det_conf, det_cls);
+  return true;
+}
+
+bool YOLOV8::process_one_image(
+    const std::vector<unsigned char> img,
+    std::vector<std::vector<std::vector<half>>> &det_bbox,
+    std::vector<std::vector<half>> &det_conf,
+    std::vector<std::vector<half>> &det_cls) {
+
+  std::cout << "yolov8 H2D ..." << std::endl;
+  // host to device
+  Host2Device(img.data(), img.size());
 
   std::cout << "yolov8 inferencing ..." << std::endl;
   // inference

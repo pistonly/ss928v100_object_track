@@ -9,10 +9,10 @@
     "decode_step_mode": true,
     "conf_thres": 0.1,
     "log_level": "DEBUG",
-    "yolov8_roi_left": 960,
-    "yolov8_roi_top": 540,
+    "yolov8_roi_left": 0,
+    "yolov8_roi_top": -4,
     "yolov8_scale": 1.0,
-    "selected_det_id": 1,
+    "selected_det_id": 2,
     "max_det": 20,
     "yolov8_time_interval": 1,
 
