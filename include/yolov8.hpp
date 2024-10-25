@@ -3,6 +3,7 @@
 #include <half.hpp>
 #include <string>
 #include <vector>
+#include "utils.hpp"
 
 static float default_conf_thres = 0.5;
 static float default_iou_thres = 0.6;

@@ -2,7 +2,7 @@
     "rtsp_url": "rtsp://172.23.24.52:8554/test",
     "om_path": "../models/MyViTrack_ep0100_192_L3.om",
     "yolov8_om_path": "../models/yolov8_yanshou-20240922-0930_1088x1920_FP16.om",
-    "tcp_id": "172.23.24.52",
+    "tcp_ip": "172.23.24.52",
     "tcp_port": "8880",
     "output_dir": "/mnt/data/sot/",
     "save_result": true,
@@ -20,6 +20,5 @@
     "search_area_factor": 4,
     "template_size": 96,
     "search_size": 192,
-
-    "max_tracker_num": 6,
+    "max_tracker_num": 6
 }

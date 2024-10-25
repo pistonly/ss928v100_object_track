@@ -19,8 +19,8 @@ using half_float::half;
 using json = nlohmann::json;
 extern Logger logger;
 
-#define IMAGE_HEIGHT 2160
-#define IMAGE_WIDTH 3840
+#define IMAGE_HEIGHT 1080
+#define IMAGE_WIDTH 1920
 
 std::atomic<bool> running(true);
 void signal_handler(int signum) { running = false; }
@@ -38,7 +38,7 @@ bool handle_error(const char *action, int vpss_grp, int vpss_chn, int ret) {
 
 // 获取或释放帧数据
 bool process_frames(ot_video_frame_info &frame, int chn, bool release = false) {
-  std::vector<std::pair<td_s32, td_s32>> grp_chns{{0, 0}, {2, 2}};
+  std::vector<std::pair<td_s32, td_s32>> grp_chns{{0, 1}, {2, 3}};
 
   if (chn >= grp_chns.size()) {
     logger.log(ERROR, "chn should be 0 or 1");
@@ -173,7 +173,7 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
 int main(int argc, char *argv[]) {
   // OST model params
   std::cout << "Usage: " << argv[0] << " <config_path>" << std::endl;
-  std::string configure_path = "../data/configure.json";
+  std::string configure_path = "../data/configure_padding.json";
 
   if (argc > 1)
     configure_path = argv[1];
@@ -297,15 +297,13 @@ int main(int argc, char *argv[]) {
         break;
       }
 
-      copy_yuv420_from_frame(reinterpret_cast<char *>(img.data()),
-                             &v_frame_chs[current_ch]);
+      copy_yuv420_from_frame(reinterpret_cast<char *>(img.data()), &v_frame_chs[current_ch]);
 
       if (trackers_ch0.size() < 6 &&
           (v_frame_chs[current_ch].video_frame.pts - last_yolo_ts_ch0) >
               yolov8_time_interval) {
         logger.log(INFO, "yolov8 processing ...");
-        yolov8.process_one_image(reinterpret_cast<unsigned char *>(img.data()),
-                                 imageW, imageH, det_bbox, det_conf, det_cls);
+        yolov8.process_one_image(img, det_bbox, det_conf, det_cls);
         logger.log(INFO, "add tracks ...");
         add_tracks_from_dets(trackers_ch0, det_bbox, det_cls, using_kal_filter,
                              max_tracker_num, selected_det_id);
@@ -323,7 +321,7 @@ int main(int argc, char *argv[]) {
       process_frames(v_frame_chs[current_ch], current_ch, true);
     }
     {
-      Timer timer("process one frame of chn-1");
+      Timer timer("process one frame of chn-0");
       // process first channel
       // get one frame
       int current_ch = 1;
@@ -332,15 +330,13 @@ int main(int argc, char *argv[]) {
         break;
       }
 
-      copy_yuv420_from_frame(reinterpret_cast<char *>(img.data()),
-                             &v_frame_chs[current_ch]);
+      copy_yuv420_from_frame(reinterpret_cast<char *>(img.data()), &v_frame_chs[current_ch]);
 
       if (trackers_ch1.size() < 6 &&
           (v_frame_chs[current_ch].video_frame.pts - last_yolo_ts_ch0) >
               yolov8_time_interval) {
         logger.log(INFO, "yolov8 processing ...");
-        yolov8.process_one_image(reinterpret_cast<unsigned char *>(img.data()),
-                                 imageW, imageH, det_bbox, det_conf, det_cls);
+        yolov8.process_one_image(img, det_bbox, det_conf, det_cls);
         logger.log(INFO, "add tracks ...");
         add_tracks_from_dets(trackers_ch1, det_bbox, det_cls, using_kal_filter,
                              max_tracker_num, selected_det_id);

@@ -18,8 +18,8 @@ using half_float::half;
 using json = nlohmann::json;
 extern Logger logger;
 
-#define IMAGE_HEIGHT 2160
-#define IMAGE_WIDTH 3840
+#define IMAGE_HEIGHT 1080
+#define IMAGE_WIDTH 1920
 
 std::atomic<bool> running(true);
 void signal_handler(int signum) { running = false; }
@@ -130,7 +130,7 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
 int main(int argc, char *argv[]) {
   // OST model params
   std::cout << "Usage: " << argv[0] << " <config_path>" << std::endl;
-  std::string configure_path = "../data/configure.json";
+  std::string configure_path = "../data/configure_padding.json";
 
   if (argc > 1)
     configure_path = argv[1];

@@ -266,13 +266,13 @@ static td_s32 sample_start_vpss(ot_vpss_grp *vpss_grp, td_u32 vpss_grp_num,
                      arr_len * sizeof(td_bool));
 
   vpss_chn_enable[0] = TD_TRUE;
-  vpss_chn_attr[0].width = g_disp_size.width;   /* 4:crop */
-  vpss_chn_attr[0].height = g_disp_size.height; /* 4:crop */
+  vpss_chn_attr[0].width = g_disp_size.width / 2;   /* 4:crop */
+  vpss_chn_attr[0].height = g_disp_size.height / 2; /* 4:crop */
   vpss_chn_attr[0].depth = 1;
-  vpss_chn_attr[1].compress_mode = OT_COMPRESS_MODE_NONE;
+  vpss_chn_attr[0].compress_mode = OT_COMPRESS_MODE_NONE;
   vpss_chn_attr[0].chn_mode = OT_VPSS_CHN_MODE_USER;
-  // vpss_chn_attr[0].pixel_format = OT_PIXEL_FORMAT_YVU_SEMIPLANAR_420;
-  vpss_chn_attr[0].pixel_format = OT_PIXEL_FORMAT_YUV_SEMIPLANAR_420;
+  vpss_chn_attr[0].pixel_format = OT_PIXEL_FORMAT_YVU_SEMIPLANAR_420;
+  // vpss_chn_attr[0].pixel_format = OT_PIXEL_FORMAT_YUV_SEMIPLANAR_420;
   vpss_chn_attr[0].frame_rate.src_frame_rate = -1;
   vpss_chn_attr[0].frame_rate.dst_frame_rate = -1;
 

@@ -1,6 +1,6 @@
+#include "utils.hpp"
 #include "yolov8.hpp"
 #include "post_process_tools.hpp"
-#include "utils.hpp"
 #include <iostream>
 #include <vector>
 
