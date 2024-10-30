@@ -28,6 +28,8 @@ std::atomic<bool> running(true);
 void signal_handler(int signum) { running = false; }
 int track_id = 0;
 
+static TCP tcp_obj;
+
 // 提取通用的错误处理函数
 bool handle_error(const char *action, int vpss_grp, int vpss_chn, int ret) {
   if (ret != TD_SUCCESS) {
@@ -67,8 +69,7 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
                      const std::vector<unsigned char> &img, int imageW,
                      int imageH, uint8_t cameraId, uint64_t timestamp,
                      std::ofstream &real_result_f, bool save_result,
-                     bool b_tcp_send, const std::string &tcp_ip,
-                     const std::string &tcp_port) {
+                     bool b_tcp_send) {
   for (auto it = trackers.begin(); it != trackers.end();) {
     int trackerId = it->first;
     auto &tr = it->second;
@@ -117,9 +118,12 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
     }
 
     if (b_tcp_send) {
-      TCP tcp_obj;
-      tcp_obj.connect_to_tcp(tcp_ip, std::stoi(tcp_port));
-      send_track_result(tcp_obj.m_sock, track_res, cameraId, timestamp);
+      if (!tcp_obj.mb_sock_connected && tcp_obj.mb_tcpIp_setted) {
+        tcp_obj.connect_to_tcp();
+      }
+      if (tcp_obj.mb_sock_connected) {
+        send_track_result(tcp_obj.m_sock, track_res, cameraId, timestamp);
+      }
     }
 
     // 检查目标是否在图像边缘，如果是则移除该追踪器
@@ -236,6 +240,7 @@ int main(int argc, char *argv[]) {
   // tcp
   std::string tcp_ip = config_data["tcp_ip"];
   std::string tcp_port = config_data["tcp_port"];
+  tcp_obj.set_ip_port(tcp_ip, std::stoi(tcp_port));
 
   // yolov8
   const float conf_thres = config_data["conf_thres"];
@@ -309,7 +314,7 @@ int main(int argc, char *argv[]) {
       processTrackers(trackers, ostModel, img, imageW, imageH,
                       current_cameraId,
                       v_frame_chs[current_ch].video_frame.pts / 1000,
-                      real_result_f, save_result, true, tcp_ip, tcp_port);
+                      real_result_f, save_result, true);
 
       process_frames(v_frame_chs[current_ch], current_ch, true);
     }
