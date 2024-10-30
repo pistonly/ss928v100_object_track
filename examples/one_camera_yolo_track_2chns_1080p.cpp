@@ -107,7 +107,7 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
     }
 
     // NOTE: tcp client need: x0, y0, x1, y1, conf, track_id at 1920x1080 frame.
-    int offset_y = -36;
+    int offset_y = -1 * OFFSET_H;
     std::vector<std::vector<float>> track_res(
         {{tr._tlwh[0], tr._tlwh[1] + offset_y, tr._tlwh[0] + tr._tlwh[2],
           tr._tlwh[0] + tr._tlwh[3] + offset_y, 0.f, trackerId}});
