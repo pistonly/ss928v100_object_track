@@ -33,6 +33,8 @@ public:
     }
   }
 
+  LogLevel get_level(){return log_level;}
+
 private:
   LogLevel log_level;
 

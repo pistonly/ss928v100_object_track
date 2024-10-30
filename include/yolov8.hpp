@@ -17,6 +17,7 @@ public:
   std::string m_output_dir;
   std::pair<int, int> m_topleft;
   float m_scale;
+  bool mb_using_roi = false;
 
   std::vector<std::vector<size_t>> mv_outputs_dim;
   int m_input_h, m_input_w;

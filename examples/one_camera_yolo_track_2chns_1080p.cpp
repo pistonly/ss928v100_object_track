@@ -19,8 +19,10 @@ using half_float::half;
 using json = nlohmann::json;
 extern Logger logger;
 
-#define IMAGE_HEIGHT 1080
+#define IMAGE_HEIGHT 1152
 #define IMAGE_WIDTH 1920
+#define OFFSET_W 0
+#define OFFSET_H 36
 
 std::atomic<bool> running(true);
 void signal_handler(int signum) { running = false; }
@@ -59,7 +61,6 @@ bool process_frames(ot_video_frame_info &frame, int chn, bool release = false) {
   }
   return true;
 }
-
 
 void processTrackers(std::unordered_map<int, STrack> &trackers,
                      NNN_Ostrack_Callback &ostModel,
@@ -105,16 +106,14 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
       tr.update(tlwh_new);
     }
 
-    // x0, y0, x1, y1, conf, track_id
+    // NOTE: tcp client need: x0, y0, x1, y1, conf, track_id at 1920x1080 frame.
+    int offset_y = -36;
     std::vector<std::vector<float>> track_res(
-        {{tr._tlwh[0], tr._tlwh[1], tr._tlwh[0] + tr._tlwh[2],
-          tr._tlwh[0] + tr._tlwh[3], 0.f, trackerId}});
+        {{tr._tlwh[0], tr._tlwh[1] + offset_y, tr._tlwh[0] + tr._tlwh[2],
+          tr._tlwh[0] + tr._tlwh[3] + offset_y, 0.f, trackerId}});
 
     if (save_result && real_result_f.is_open()) {
       save_one_track_result_csv(real_result_f, track_res, cameraId, timestamp);
-      // real_result_f << imageId << ", " << trackerId << ", " << tr._tlwh[0]
-      //               << ", " << tr._tlwh[1] << ", " << tr._tlwh[2] << ", "
-      //               << tr._tlwh[3] << std::endl;
     }
 
     if (b_tcp_send) {
@@ -169,7 +168,7 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
 int main(int argc, char *argv[]) {
   // OST model params
   std::cout << "Usage: " << argv[0] << " <config_path>" << std::endl;
-  std::string configure_path = "../data/configure_padding.json";
+  std::string configure_path = "../data/configure_1080p.json";
 
   if (argc > 1)
     configure_path = argv[1];
@@ -208,8 +207,7 @@ int main(int argc, char *argv[]) {
 
   std::vector<std::string> required_keys = {
       "om_path",        "yolov8_om_path", "tcp_ip",           "tcp_port",
-      "output_dir",     "save_result",    "decode_step_mode", "yolov8_roi_left",
-      "yolov8_roi_top", "yolov8_scale"};
+      "output_dir",     "save_result",    "decode_step_mode"};
   for (const auto &key : required_keys) {
     if (!config_data.contains(key)) {
       logger.log(ERROR, "Can't find key: ", key);
@@ -240,14 +238,10 @@ int main(int argc, char *argv[]) {
   std::string tcp_port = config_data["tcp_port"];
 
   // yolov8
-  const int yolov8_roi_left = config_data["yolov8_roi_left"];
-  const int yolov8_roi_top = config_data["yolov8_roi_top"];
-  const float yolov8_scale = config_data["yolov8_scale"];
-  const float conf_thres = 0.5;
-  const float iou_thres = 0.6;
+  const float conf_thres = config_data["conf_thres"];
+  const float iou_thres = config_data["iou_thres"];
   const int max_det = config_data["max_det"];
   YOLOV8 yolov8(yolov8ModelPath, output_dir);
-  yolov8.set_roi_parameters(yolov8_roi_left, yolov8_roi_top, yolov8_scale);
   yolov8.set_postprocess_parameters(conf_thres, iou_thres, max_det);
   int batch_num = yolov8.mv_outputs_dim[0][0];
   std::vector<std::vector<std::vector<half>>> det_bbox(batch_num);
@@ -256,9 +250,6 @@ int main(int argc, char *argv[]) {
 
   std::vector<uint8_t> v_cameraIds;
   getCameraId_pair(v_cameraIds);
-  bool b_is_double_channels = true;
-  if (v_cameraIds[0] == v_cameraIds[1])
-    b_is_double_channels = false;
 
   // Initialize OST model
   NNN_Ostrack_Callback ostModel(omPath, template_factor, search_area_factor,
@@ -266,12 +257,12 @@ int main(int argc, char *argv[]) {
 
   // Initialize tracking
   bool using_kal_filter = false;
-  std::unordered_map<int, STrack> trackers_ch0;
-  std::unordered_map<int, STrack> trackers_ch1;
+  std::vector<std::unordered_map<int, STrack>> v_trackers(v_cameraIds.size());
+  std::vector<uint64_t> v_last_yolo_ts(v_cameraIds.size(), 0);
 
   // pre-allocate buffers
   std::vector<unsigned char> img(IMAGE_SIZE);
-  std::vector<ot_video_frame_info> v_frame_chs(2);
+  std::vector<ot_video_frame_info> v_frame_chs(v_cameraIds.size());
 
   signal(SIGINT, signal_handler); // Capture Ctrl+C
 
@@ -283,75 +274,39 @@ int main(int argc, char *argv[]) {
     real_result_f << "cameraId,timestamp,trackerId,l,t,w,h" << std::endl;
   }
 
-  uint64_t last_yolo_ts_ch0 = 0, last_yolo_ts_ch1 = 0;
   while (running) {
-    {
-      Timer timer("process one frame of chn-0");
-      // process first channel
+    for (int current_ch = 0; current_ch < v_cameraIds.size(); ++current_ch) {
+      Timer timer("process one frame of chn-" + std::to_string(current_ch));
+      // process channel current_ch
       // get one frame
-      int current_ch = 0;
       uint8_t current_cameraId = v_cameraIds[current_ch];
       if (!process_frames(v_frame_chs[current_ch], current_ch)) {
         break;
       }
 
       copy_yuv420_from_frame(reinterpret_cast<char *>(img.data()),
-                             &v_frame_chs[current_ch]);
+                             &v_frame_chs[current_ch], IMAGE_HEIGHT, IMAGE_WIDTH, OFFSET_H, OFFSET_W);
 
-      if (trackers_ch0.size() < max_tracker_num &&
-          (v_frame_chs[current_ch].video_frame.pts - last_yolo_ts_ch0) >
+      auto &trackers = v_trackers[current_ch];
+      auto &last_yolo_ts = v_last_yolo_ts[current_ch];
+
+      if (trackers.size() < max_tracker_num &&
+          (v_frame_chs[current_ch].video_frame.pts - last_yolo_ts) >
               yolov8_time_interval) {
-        logger.log(INFO, "yolov8 processing ...");
+        Timer timer("yolov8 processing ...");
         yolov8.process_one_image(img, det_bbox, det_conf, det_cls);
-        logger.log(INFO, "add tracks ...");
-        add_tracks_from_dets(trackers_ch0, det_bbox, det_cls, using_kal_filter,
+        logger.log(DEBUG, "add tracks ...");
+        add_tracks_from_dets(trackers, det_bbox, det_cls, using_kal_filter,
                              max_tracker_num, selected_det_id);
-        last_yolo_ts_ch0 = v_frame_chs[current_ch].video_frame.pts;
+        last_yolo_ts = v_frame_chs[current_ch].video_frame.pts;
       }
 
       // Use Kalman filter if enabled
       if (using_kal_filter) {
-        STrack::multi_predict(trackers_ch0);
+        STrack::multi_predict(trackers);
       }
 
-      processTrackers(trackers_ch0, ostModel, img, imageW, imageH,
-                      current_cameraId,
-                      v_frame_chs[current_ch].video_frame.pts / 1000,
-                      real_result_f, save_result, true, tcp_ip, tcp_port);
-
-      process_frames(v_frame_chs[current_ch], current_ch, true);
-    }
-    if (b_is_double_channels)
-    {
-      Timer timer("process one frame of chn-1");
-      // process first channel
-      // get one frame
-      int current_ch = 1;
-      uint8_t current_cameraId = v_cameraIds[current_ch];
-      if (!process_frames(v_frame_chs[current_ch], current_ch)) {
-        break;
-      }
-
-      copy_yuv420_from_frame(reinterpret_cast<char *>(img.data()),
-                             &v_frame_chs[current_ch]);
-
-      if (trackers_ch1.size() < max_tracker_num &&
-          (v_frame_chs[current_ch].video_frame.pts - last_yolo_ts_ch1) >
-              yolov8_time_interval) {
-        logger.log(INFO, "yolov8 processing ...");
-        yolov8.process_one_image(img, det_bbox, det_conf, det_cls);
-        logger.log(INFO, "add tracks ...");
-        add_tracks_from_dets(trackers_ch1, det_bbox, det_cls, using_kal_filter,
-                             max_tracker_num, selected_det_id);
-        last_yolo_ts_ch1 = v_frame_chs[current_ch].video_frame.pts;
-      }
-
-      // Use Kalman filter if enabled
-      if (using_kal_filter) {
-        STrack::multi_predict(trackers_ch1);
-      }
-
-      processTrackers(trackers_ch1, ostModel, img, imageW, imageH,
+      processTrackers(trackers, ostModel, img, imageW, imageH,
                       current_cameraId,
                       v_frame_chs[current_ch].video_frame.pts / 1000,
                       real_result_f, save_result, true, tcp_ip, tcp_port);

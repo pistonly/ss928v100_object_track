@@ -21,6 +21,8 @@ extern Logger logger;
 
 #define IMAGE_HEIGHT 1152
 #define IMAGE_WIDTH 1920
+#define OFFSET_W 0
+#define OFFSET_H 36
 
 std::atomic<bool> running(true);
 void signal_handler(int signum) { running = false; }
@@ -29,7 +31,7 @@ int track_id = 0;
 void processTrackers(std::unordered_map<int, STrack> &trackers,
                      NNN_Ostrack_Callback &ostModel,
                      const std::vector<unsigned char> &img, int imageW,
-                     int imageH, int imageId, bool &template_initialized,
+                     int imageH, int imageId, 
                      std::ofstream &real_result_f, bool save_result) {
   for (auto it = trackers.begin(); it != trackers.end();) {
     int trackerId = it->first;
@@ -161,9 +163,8 @@ int main(int argc, char *argv[]) {
   }
 
   std::vector<std::string> required_keys = {
-      "rtsp_url",        "om_path",        "yolov8_om_path", "tcp_ip",
-      "tcp_port",        "output_dir",     "save_result",    "decode_step_mode",
-      "yolov8_roi_left", "yolov8_roi_top", "yolov8_scale"};
+      "rtsp_url", "om_path",    "yolov8_om_path", "tcp_ip",
+      "tcp_port", "output_dir", "save_result",    "decode_step_mode"};
   for (const auto &key : required_keys) {
     if (!config_data.contains(key)) {
       logger.log(ERROR, "Can't find key: ", key);
@@ -198,14 +199,10 @@ int main(int argc, char *argv[]) {
   decoder.start_decode();
 
   // yolov8
-  const int yolov8_roi_left = config_data["yolov8_roi_left"];
-  const int yolov8_roi_top = config_data["yolov8_roi_top"];
-  const float yolov8_scale = config_data["yolov8_scale"];
   const float conf_thres = config_data["conf_thres"];
   const float iou_thres = config_data["iou_thres"];
   const int max_det = config_data["max_det"];
   YOLOV8 yolov8(yolov8ModelPath, output_dir);
-  yolov8.set_roi_parameters(yolov8_roi_left, yolov8_roi_top, yolov8_scale);
   yolov8.set_postprocess_parameters(conf_thres, iou_thres, max_det);
   int batch_num = yolov8.mv_outputs_dim[0][0];
   std::vector<std::vector<std::vector<half>>> det_bbox(batch_num);
@@ -227,7 +224,6 @@ int main(int argc, char *argv[]) {
   std::fill(img.begin(), img.begin() + Y_size, 114);
   std::fill(img.begin() + Y_size, img.end(), 128);
 
-  bool template_initialized = false;
   signal(SIGINT, signal_handler); // Capture Ctrl+C
 
   // Save results
@@ -247,7 +243,8 @@ int main(int argc, char *argv[]) {
       if (decoder.get_frame_without_release()) {
         std::cout << "Got one frame" << std::endl;
         copy_yuv420_from_frame(reinterpret_cast<char *>(img.data()),
-                               &decoder.frame_H, 1152, 1920, 36, 0);
+                               &decoder.frame_H, IMAGE_HEIGHT, IMAGE_WIDTH, OFFSET_H,
+                               OFFSET_W);
         // // debug
         // std::stringstream ss;
         // ss << "/mnt/data/sot/frame_" << imageId << ".jpg";
@@ -267,6 +264,7 @@ int main(int argc, char *argv[]) {
           std::cout << "add tracks ... " << std::endl;
           add_tracks_from_dets(trackers, det_bbox, det_cls, using_kal_filter,
                                max_tracker_num, selected_det_id);
+          last_yolov8_time = now;
         }
 
         // Use Kalman filter if enabled
@@ -275,7 +273,7 @@ int main(int argc, char *argv[]) {
         }
 
         processTrackers(trackers, ostModel, img, imageW, imageH, imageId++,
-                        template_initialized, real_result_f, save_result);
+                        real_result_f, save_result);
 
       } else {
         break;
@@ -284,7 +282,6 @@ int main(int argc, char *argv[]) {
       decoder.release_frames();
     }
 
-    template_initialized = false;
   }
 
   if (save_result && real_result_f.is_open()) {

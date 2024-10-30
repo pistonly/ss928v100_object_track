@@ -38,5 +38,8 @@ check version b1a623b
   cd ./scripts/
   python debug_nnn_model.py
 #+end_src
-
-
+* 1080p
+** haisi nnn using 1152x1920 for 1080p
+1088x1920 infer cost >550ms while
+1152x1920 infer cost <100ms
+** don't using AIPP padding or resize

@@ -3,6 +3,8 @@
 #include "post_process_tools.hpp"
 #include <iostream>
 #include <vector>
+#include <cassert>
+
 
 extern Logger logger;
 
@@ -49,23 +51,28 @@ void YOLOV8::set_roi_parameters(int left, int top, float scale) {
   m_topleft.first = left;
   m_topleft.second = top;
   m_scale = scale;
+  mb_using_roi = true;
 }
 
 void YOLOV8::post_process(std::vector<std::vector<std::vector<half>>> &det_bbox,
                           std::vector<std::vector<half>> &det_conf,
                           std::vector<std::vector<half>> &det_cls) {
 
-  std::cout << "post_process.D2H ..." << std::endl;
   std::vector<const char *> vp_outputs;
-  Result ret = Device2Host(vp_outputs);
-  if (ret != SUCCESS) {
-    logger.log(ERROR, "Device2Host error");
-    return;
+  {
+    Timer timer("post_process.D2H ...");
+    Result ret = Device2Host(vp_outputs);
+    if (ret != SUCCESS) {
+      logger.log(ERROR, "Device2Host error");
+      return;
+    }
   }
 
-  std::cout << "post_process.split ..." << std::endl;
-  split_bbox_conf_reduced(vp_outputs, mv_outputs_dim, mvp_bbox, mvp_conf,
-                          mvp_cls);
+  {
+    Timer timer("post_process.split ...");
+    split_bbox_conf_reduced(vp_outputs, mv_outputs_dim, mvp_bbox, mvp_conf,
+                            mvp_cls);
+  }
 
   const int batch_num = mvp_bbox.size();
 
@@ -75,25 +82,32 @@ void YOLOV8::post_process(std::vector<std::vector<std::vector<half>>> &det_bbox,
     const std::vector<const half *> &bbox_batch_i = mvp_bbox[i];
     const std::vector<const half *> &conf_batch_i = mvp_conf[i];
     const std::vector<const half *> &cls_batch_i = mvp_cls[i];
-    std::cout << "post_process.NMS ..., batch_num: " << batch_num << std::endl;
-    NMS_bboxTranspose(box_num, bbox_batch_i, conf_batch_i, cls_batch_i,
-                      det_bbox[i], det_conf[i], det_cls[i], m_conf_thres,
-                      m_iou_thres, m_max_det);
+    {
+      Timer timer("post_process.NMS ...");
+      NMS_bboxTranspose(box_num, bbox_batch_i, conf_batch_i, cls_batch_i,
+                        det_bbox[i], det_conf[i], det_cls[i], m_conf_thres,
+                        m_iou_thres, m_max_det);
+    }
 
-    std::cout << "post_process.change_to_real ... " << batch_num << std::endl;
-    // change to real location
-    std::cout << "m_topleft: " << m_topleft.first << ", " << m_topleft.second
-              << std::endl;
-    std::cout << "m_scale: " << m_scale << std::endl;
-    for (auto j = 0; j < det_bbox[i].size(); ++j) {
-      std::vector<half> &box = det_bbox[i][j];
-      box[0] = m_scale * box[0] + m_topleft.first;
-      box[1] = m_scale * box[1] + m_topleft.second;
-      box[2] = m_scale * box[2] + m_topleft.first;
-      box[3] = m_scale * box[3] + m_topleft.second;
-      std::cout << box.at(0) << ", " << box.at(1) << ", " << box.at(2) << ", "
-                << box.at(3) << ", " << det_conf[i][j] << ", " << det_cls[i][j]
-                << std::endl;
+    if (mb_using_roi) {
+      logger.log(DEBUG, "m_topleft: ", m_topleft.first, ", ", m_topleft.second,
+                 "\n m_scale: ", m_scale);
+      for (auto j = 0; j < det_bbox[i].size(); ++j) {
+        std::vector<half> &box = det_bbox[i][j];
+        box[0] = m_scale * box[0] + m_topleft.first;
+        box[1] = m_scale * box[1] + m_topleft.second;
+        box[2] = m_scale * box[2] + m_topleft.first;
+        box[3] = m_scale * box[3] + m_topleft.second;
+      }
+    }
+
+    //
+    if (logger.get_level() == DEBUG) {
+      for (auto j = 0; j < det_bbox[i].size(); ++j) {
+        std::vector<half> &box = det_bbox[i][j];
+        logger.log(DEBUG, "bbox: \n", box[0], ", ", box[1], ", ", box[2], ", ",
+                   box[3], det_conf[i][j], ", ", det_cls[i][j]);
+      }
     }
   }
 }
@@ -105,6 +119,8 @@ bool YOLOV8::process_one_image(
     std::vector<std::vector<half>> &det_cls) {
 
   // cut image roi
+  assert(mb_using_roi && "roi parameters should be set");
+
   {
     Timer timer("cutting yolov8 roi");
     int x0 = m_topleft.first;
