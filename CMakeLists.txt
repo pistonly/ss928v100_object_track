@@ -141,9 +141,9 @@ target_link_libraries(one_camera_yolo_track_cut_roi
   ${YOLO_LIB}
 )
 
-add_executable(one_camera_yolo_track_padding ./examples/one_camera_yolo_track_padding.cpp
+add_executable(one_camera_yolo_track_resize ./examples/one_camera_yolo_track_resize.cpp
   ${SAMPLE_COMMON_SRC} ${UTILS_SRC} ${SVP_COMMON_SRC} ${OST_SRC} ${TRACK_SRC} ${YOLO_SRC})
-target_link_libraries(one_camera_yolo_track_padding
+target_link_libraries(one_camera_yolo_track_resize
   ${SYSTEM_LIBS}
   ${IVE_LINK_LIBS}
   ascendcl
@@ -157,6 +157,22 @@ target_link_libraries(one_camera_yolo_track_padding
   ${YOLO_LIB}
 )
 
+
+add_executable(one_camera_yolo_track_1080p ./examples/one_camera_yolo_track_1080p.cpp
+  ${SAMPLE_COMMON_SRC} ${UTILS_SRC} ${SVP_COMMON_SRC} ${OST_SRC} ${TRACK_SRC} ${YOLO_SRC})
+target_link_libraries(one_camera_yolo_track_1080p
+  ${SYSTEM_LIBS}
+  ${IVE_LINK_LIBS}
+  ascendcl
+  hardware_decode
+  avformat
+  avcodec
+  avutil
+  swresample
+  swscale
+  stdc++ # note this line is important
+  ${YOLO_LIB}
+)
 
 add_executable(one_camera_yolo_track_2chns ./examples/one_camera_yolo_track_2chns.cpp
   ${SAMPLE_COMMON_SRC} ${UTILS_SRC} ${SVP_COMMON_SRC} ${OST_SRC} ${TRACK_SRC} ${YOLO_SRC})

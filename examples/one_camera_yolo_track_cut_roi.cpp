@@ -25,17 +25,6 @@ std::atomic<bool> running(true);
 void signal_handler(int signum) { running = false; }
 int track_id = 0;
 
-bool isAtImageEdge(std::vector<float> tlwh, int threshold = 5) {
-  const float x0 = tlwh[0];
-  const float y0 = tlwh[1];
-  const float x1 = x0 + tlwh[2];
-  const float y1 = y0 + tlwh[3];
-  if (x0 < threshold || y0 < threshold || x1 > (IMAGE_WIDTH - threshold) ||
-      y1 > (IMAGE_HEIGHT - threshold))
-    return true;
-  return false;
-}
-
 void processTrackers(std::unordered_map<int, STrack> &trackers,
                      NNN_Ostrack_Callback &ostModel,
                      const std::vector<unsigned char> &img, int imageW,
@@ -85,7 +74,7 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
     }
 
     // 检查目标是否在图像边缘，如果是则移除该追踪器
-    if (isAtImageEdge(tr._tlwh)) {
+    if (isAtImageEdge(tr._tlwh, 5, IMAGE_HEIGHT, IMAGE_WIDTH)) {
       it = trackers.erase(it);
     } else {
       ++it;
@@ -168,7 +157,7 @@ int main(int argc, char *argv[]) {
   }
 
   std::vector<std::string> required_keys = {
-      "rtsp_url",        "om_path",        "yolov8_om_path", "tcp_id",
+      "rtsp_url",        "om_path",        "yolov8_om_path", "tcp_ip",
       "tcp_port",        "output_dir",     "save_result",    "decode_step_mode",
       "yolov8_roi_left", "yolov8_roi_top", "yolov8_scale"};
   for (const auto &key : required_keys) {
@@ -242,8 +231,9 @@ int main(int argc, char *argv[]) {
                                &decoder.frame_H);
 
         if (imageId % 10 == 0 && trackers.size() < 6) {
+          Timer timer("yolov8 processing");
           // add new trackers
-          std::cout << "yolov8 processing ..." << std::endl;
+          // std::cout << "yolov8 processing ..." << std::endl;
           yolov8.process_one_image(
               reinterpret_cast<unsigned char *>(img.data()), imageW, imageH,
               det_bbox, det_conf, det_cls);

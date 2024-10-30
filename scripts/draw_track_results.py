@@ -2,6 +2,7 @@ import pandas as pd
 import cv2
 from pathlib import Path
 import time
+import numpy as np
 
 result_path = "/home/liuyang/Documents/tmp/sot/results.csv"
 rtsp_url = "rtsp://172.23.24.52:8554/test"
@@ -26,13 +27,18 @@ img_id = 0
 
 colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (0, 255, 255), (255, 0, 255)]
 color_index = 0
+stop = False
+
+frame = np.zeros((1152, 1920, 3), dtype=np.uint8) + 114
 
 while True:
-    ret, frame = cap.read()
+    ret, _frame = cap.read()
     if not ret:
         print("can't receive frame. Existing...")
         break
+    frame[36:-36] = _frame
 
+    cv2.setWindowTitle("RTSP Stream", f"img_id: {img_id}")
     # draw track bbox
     track_result_frame = track_results[track_results['imageId'] == img_id]
     for i in range(len(track_result_frame)):
@@ -44,10 +50,17 @@ while True:
         h = int(track_i['h'])
         color = colors[track_id % len(colors)]
         cv2.rectangle(frame, (x0, y0), (x0 + w, y0 + h), color, 2)
+        # print(x0, y0, w, h)
 
-    if cv2.waitKey(1) == ord("q"):
+    while True:
+        key = cv2.waitKey(10);
+        if key == 32: # space
+            break
+        if key == 27: # ESC
+            stop = True
+            break
+        cv2.imshow("RTSP Stream", frame)
+    if stop:
         break
-    cv2.imshow("RTSP Stream", frame)
-    time.sleep(0.5)
     img_id += 1
 

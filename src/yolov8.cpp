@@ -104,47 +104,55 @@ bool YOLOV8::process_one_image(
     std::vector<std::vector<half>> &det_conf,
     std::vector<std::vector<half>> &det_cls) {
 
-  std::cout << "cutting yolov8 roi ..." << std::endl;
   // cut image roi
-  int x0 = m_topleft.first;
-  int y0 = m_topleft.second;
-  int x1 = x0 + m_input_w;
-  int y1 = y0 + m_input_h;
+  {
+    Timer timer("cutting yolov8 roi");
+    int x0 = m_topleft.first;
+    int y0 = m_topleft.second;
+    int x1 = x0 + m_input_w;
+    int y1 = y0 + m_input_h;
 
-  if (x0 < 0 || y0 < 0 || x1 > imgW || y1 > imgH) {
-    logger.log(ERROR, "cut roi out of range!");
-    return false;
+    if (x0 < 0 || y0 < 0 || x1 > imgW || y1 > imgH) {
+      logger.log(ERROR, "cut roi out of range!");
+      return false;
+    }
+
+    int roi_offset = 0;
+    int img_offset = y0 * imgW;
+    int roi_uv_offset = m_input_h * m_input_w;
+    int img_uv_offset = (imgH + y0 * 0.5) * imgW;
+    for (int h = y0; h < y1; ++h) {
+      for (int w = x0, roi_x = 0; w < x1; ++w, ++roi_x) {
+        input_yuv[roi_offset + roi_x] = img[img_offset + w];
+        if (h % 2 == 0)
+          input_yuv[roi_uv_offset + roi_x] = img[img_uv_offset + w];
+      }
+      roi_offset += m_input_w;
+      img_offset += imgW;
+      if (h % 2 == 0) {
+        roi_uv_offset += m_input_w;
+        img_uv_offset += imgW;
+      }
+    }
   }
 
-  int roi_offset = 0;
-  int img_offset = y0 * imgW;
-  int roi_uv_offset = m_input_h * m_input_w;
-  int img_uv_offset = (imgH + y0 * 0.5) * imgW;
-  for (int h = y0; h < y1; ++h) {
-    for (int w = x0, roi_x = 0; w < x1; ++w, ++roi_x) {
-      input_yuv[roi_offset + roi_x] = img[img_offset + w];
-      if (h % 2 == 0)
-        input_yuv[roi_uv_offset + roi_x] = img[img_uv_offset + w];
-    }
-    roi_offset += m_input_w;
-    img_offset += imgW;
-    if (h % 2 == 0) {
-      roi_uv_offset += m_input_w;
-      img_uv_offset += imgW;
-    }
-  }
-
-  std::cout << "yolov8 H2D ..." << std::endl;
   // host to device
-  Host2Device(input_yuv.data(), input_yuv.size());
+  {
+    Timer timer("yolov8 H2D");
+    Host2Device(input_yuv.data(), input_yuv.size());
+  }
 
-  std::cout << "yolov8 inferencing ..." << std::endl;
   // inference
-  Execute();
+  {
+    Timer timer("yolov8 inferencing");
+    Execute();
+  }
 
-  std::cout << "yolov8 postprocessing ..." << std::endl;
   // postprocess
-  post_process(det_bbox, det_conf, det_cls);
+  {
+    Timer timer("yolov8 postprocessing");
+    post_process(det_bbox, det_conf, det_cls);
+  }
   return true;
 }
 

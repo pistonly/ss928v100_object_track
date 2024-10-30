@@ -184,11 +184,15 @@ void save_output(const std::string &output_dir, const std::string output_stem,
  * @param[in] frame Description
  */
 void copy_yuv420_from_frame(char *yuv420, ot_video_frame_info *frame);
+void copy_yuv420_from_frame(char *yuv420, ot_video_frame_info *frame, int yuv_H, int yuv_W, int offsize_H, int offset_W);
 void saveBinaryFile(const std::vector<unsigned char> &data,
                     const std::string &filePath);
 void saveBinaryFile(const std::vector<char> &data, const std::string &filePath);
 
 std::vector<std::vector<float>> readCSV(const std::string &filename);
+
+bool isAtImageEdge(std::vector<float> tlwh, int threshold = 5,
+                   int image_height = 2160, int image_width = 3840);
 
 #ifdef ENABLE_TIMER
 class Timer {
@@ -218,6 +222,7 @@ public:
 std::string getIPAddressUsingIfconfig();
 
 uint8_t getCameraId();
+void getCameraId_pair(std::vector<uint8_t> &cameraIds);
 
 void send_track_result(int sock,
                        const std::vector<std::vector<float>> &tracker_res,

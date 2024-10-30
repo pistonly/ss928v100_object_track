@@ -1,7 +1,7 @@
 {
     "rtsp_url": "rtsp://172.23.24.52:8554/test",
     "om_path": "../models/MyViTrack_ep0100_192_L3.om",
-    "yolov8_om_path": "../models/yolov8_yanshou-20240922-0930_1088x1920_FP16.om",
+    "yolov8_om_path": "../models/yolov8n_best_kxw_1088x1920_FP16.om",
     "tcp_ip": "172.23.24.52",
     "tcp_port": "8880",
     "output_dir": "/mnt/data/sot/",
@@ -14,8 +14,9 @@
     "yolov8_scale": 1.0,
     "selected_det_id": 1,
     "max_det": 20,
+    "conf_thres": 0.01,
+    "iou_thres": 0.6,
     "yolov8_time_interval": 1,
-
     "template_factor": 1.6,
     "search_area_factor": 4,
     "template_size": 96,

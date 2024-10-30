@@ -60,17 +60,6 @@ bool process_frames(ot_video_frame_info &frame, int chn, bool release = false) {
   return true;
 }
 
-bool isAtImageEdge(std::vector<float> tlwh, int threshold = 5) {
-  const float x0 = tlwh[0];
-  const float y0 = tlwh[1];
-  const float x1 = x0 + tlwh[2];
-  const float y1 = y0 + tlwh[3];
-  if (x0 < threshold || y0 < threshold || x1 > (IMAGE_WIDTH - threshold) ||
-      y1 > (IMAGE_HEIGHT - threshold))
-    return true;
-  return false;
-}
-
 void processTrackers(std::unordered_map<int, STrack> &trackers,
                      NNN_Ostrack_Callback &ostModel,
                      const std::vector<unsigned char> &img, int imageW,
@@ -128,7 +117,7 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
     }
 
     // 检查目标是否在图像边缘，如果是则移除该追踪器
-    if (isAtImageEdge(tr._tlwh)) {
+    if (isAtImageEdge(tr._tlwh, 5, IMAGE_HEIGHT, IMAGE_WIDTH)) {
       it = trackers.erase(it);
     } else {
       ++it;

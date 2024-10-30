@@ -25,17 +25,6 @@ std::atomic<bool> running(true);
 void signal_handler(int signum) { running = false; }
 int track_id = 0;
 
-bool isAtImageEdge(std::vector<float> tlwh, int threshold = 5) {
-  const float x0 = tlwh[0];
-  const float y0 = tlwh[1];
-  const float x1 = x0 + tlwh[2];
-  const float y1 = y0 + tlwh[3];
-  if (x0 < threshold || y0 < threshold || x1 > (IMAGE_WIDTH - threshold) ||
-      y1 > (IMAGE_HEIGHT - threshold))
-    return true;
-  return false;
-}
-
 void processTrackers(std::unordered_map<int, STrack> &trackers,
                      NNN_Ostrack_Callback &ostModel,
                      const std::vector<unsigned char> &img, int imageW,
@@ -85,7 +74,7 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
     }
 
     // 检查目标是否在图像边缘，如果是则移除该追踪器
-    if (isAtImageEdge(tr._tlwh)) {
+    if (isAtImageEdge(tr._tlwh, 5, IMAGE_HEIGHT, IMAGE_WIDTH)) {
       it = trackers.erase(it);
     } else {
       ++it;
@@ -118,6 +107,8 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
     if (iou > 0.1)
       continue;
     else {
+      logger.log(DEBUG, "add det: ", xyxy[0], ", ", xyxy[1], ", ", xyxy[2],
+                 ", ", xyxy[3]);
       std::vector<float> tlwh = xyxy2tlwh(xyxy);
       tracks.emplace(track_id++, STrack(tlwh, using_kal_filter));
       added_num++;
@@ -130,7 +121,7 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
 int main(int argc, char *argv[]) {
   // OST model params
   std::cout << "Usage: " << argv[0] << " <config_path>" << std::endl;
-  std::string configure_path = "../data/configure_padding.json";
+  std::string configure_path = "../data/configure_resize.json";
 
   if (argc > 1)
     configure_path = argv[1];
@@ -168,7 +159,7 @@ int main(int argc, char *argv[]) {
   }
 
   std::vector<std::string> required_keys = {
-      "rtsp_url",        "om_path",        "yolov8_om_path", "tcp_id",
+      "rtsp_url",        "om_path",        "yolov8_om_path", "tcp_ip",
       "tcp_port",        "output_dir",     "save_result",    "decode_step_mode",
       "yolov8_roi_left", "yolov8_roi_top", "yolov8_scale"};
   for (const auto &key : required_keys) {
@@ -187,6 +178,13 @@ int main(int argc, char *argv[]) {
   bool save_result = config_data["save_result"];
   std::string output_dir = config_data["output_dir"];
 
+  int yolov8_time_interval_s = config_data["yolov8_time_interval"]; // s
+  std::chrono::microseconds yolov8_time_interval(yolov8_time_interval_s *
+                                                 1000000); // 微秒
+
+  int selected_det_id = config_data["selected_det_id"];
+  int max_tracker_num = config_data["max_tracker_num"];
+
   // VDEC source
   std::string rtsp_url = config_data["rtsp_url"];
   const int imageH = IMAGE_HEIGHT;
@@ -201,8 +199,8 @@ int main(int argc, char *argv[]) {
   const int yolov8_roi_left = config_data["yolov8_roi_left"];
   const int yolov8_roi_top = config_data["yolov8_roi_top"];
   const float yolov8_scale = config_data["yolov8_scale"];
-  const float conf_thres = 0.5;
-  const float iou_thres = 0.6;
+  const float conf_thres = config_data["conf_thres"];
+  const float iou_thres = config_data["iou_thres"];
   const int max_det = config_data["max_det"];
   YOLOV8 yolov8(yolov8ModelPath, output_dir);
   yolov8.set_roi_parameters(yolov8_roi_left, yolov8_roi_top, yolov8_scale);
@@ -232,6 +230,8 @@ int main(int argc, char *argv[]) {
     real_result_f << "imageId,trackerId,l,t,w,h" << std::endl;
   }
 
+  // 初始化 last_yolov8_time 为当前时间
+  auto last_yolov8_time = std::chrono::steady_clock::now();
   int imageId = 0;
   while (running && !decoder.is_ffmpeg_exit()) {
     {
@@ -241,13 +241,20 @@ int main(int argc, char *argv[]) {
         copy_yuv420_from_frame(reinterpret_cast<char *>(img.data()),
                                &decoder.frame_H);
 
-        if (imageId % 10 == 0 && trackers.size() < 6) {
+        // 获取当前时间
+        auto now = std::chrono::steady_clock::now();
+        // 计算距离上一次执行 yolov8 的时间差
+        auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+            now - last_yolov8_time);
+
+        if (elapsed >= yolov8_time_interval && trackers.size() < 6) {
+          Timer timer("yolov8 processing ...");
           // add new trackers
-          std::cout << "yolov8 processing ..." << std::endl;
+          // std::cout << "yolov8 processing ..." << std::endl;
           yolov8.process_one_image(img, det_bbox, det_conf, det_cls);
           std::cout << "add tracks ... " << std::endl;
-          add_tracks_from_dets(trackers, det_bbox, det_cls, using_kal_filter, 6,
-                               1);
+          add_tracks_from_dets(trackers, det_bbox, det_cls, using_kal_filter,
+                               max_tracker_num, selected_det_id);
         }
 
         // Use Kalman filter if enabled

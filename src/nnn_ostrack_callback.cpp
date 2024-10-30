@@ -1002,12 +1002,14 @@ Result NNN_Ostrack_Callback::preprocess(
              template_crop_x1, template_crop_y1,
              template_packet.template_input_size,
              template_packet.template_input_size, template_packet.templateData);
+    // TODO: crop_w, crop_h may not be real size 
     template_packet.crop_w = template_crop_x1 - template_crop_x0;
     template_packet.crop_h = template_crop_y1 - template_crop_y0;
     template_packet.initialized = true;
   }
 
   // set aipp for template
+  // TODO: set src_size limit
   SetAIPPPSrcSize(template_packet.template_input_size,
                   template_packet.template_input_size);
   SetAIPPCrop(0, 0, template_packet.crop_w, template_packet.crop_h);
