@@ -196,6 +196,10 @@ std::vector<std::vector<float>> readCSV(const std::string &filename);
 bool isAtImageEdge(std::vector<float> tlwh, int threshold = 5,
                    int image_height = 2160, int image_width = 3840);
 
+bool isAtImageEdge(std::vector<float> tlwh, int threshold_x = 5,
+                   int threshold_y = 5, int image_height = 2160,
+                   int image_width = 3840);
+
 #ifdef ENABLE_TIMER
 class Timer {
 public:

@@ -68,28 +68,31 @@ add_library(hardware_decode STATIC src/ffmpeg_vdec_vpss.cpp)
 FILE(GLOB UTILS_SRC ./src/utils.cpp)
 FILE(GLOB OST_SRC ./src/nnn_ostrack_callback.cpp)
 
-add_executable(test_ostrack ./examples/test_nnn_ostrack.cpp ${OST_SRC})
 
-target_link_libraries(test_ostrack
-  ${SYSTEM_LIBS}
-  ascendcl
-)
+# add_executable(test_ostrack_feature ./examples/test_nnn_ostrack_feature.cpp ${OST_SRC})
+# target_link_libraries(test_ostrack_feature
+#   ${SYSTEM_LIBS}
+#   ascendcl
+# )
 
-add_executable(test_ostrack_feature ./examples/test_nnn_ostrack_feature.cpp ${OST_SRC})
-target_link_libraries(test_ostrack_feature
-  ${SYSTEM_LIBS}
-  ascendcl
-)
+# add_executable(test_opencv ./examples/test_opencv.cpp)
 
-add_executable(test_opencv ./examples/test_opencv.cpp)
-
-target_link_libraries(test_opencv ${OpenCV_LIBS})
+# target_link_libraries(test_opencv ${OpenCV_LIBS})
 
 
 include(cmake/ive_link_libs.cmake)
 
 FILE(GLOB SAMPLE_COMMON_SRC ${SAMPLE_PATH}/common/*.c)
 FILE(GLOB SVP_COMMON_SRC ./src/svp/common/*.c)
+
+add_executable(test_ostrack ./examples/test_nnn_ostrack.cpp ${SAMPLE_COMMON_SRC} ${UTILS_SRC} ${SVP_COMMON_SRC} ${OST_SRC})
+target_link_libraries(test_ostrack
+  ${SYSTEM_LIBS}
+  ${IVE_LINK_LIBS}
+  ascendcl
+  stdc++ # note this line is important
+)
+
 
 add_executable(test_rtsp_vdec ./examples/test_rtsp_vdec.cpp ${SAMPLE_COMMON_SRC} ${UTILS_SRC} ${SVP_COMMON_SRC})
 target_link_libraries(test_rtsp_vdec

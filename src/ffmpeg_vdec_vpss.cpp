@@ -10,6 +10,7 @@
 #include <atomic>
 #include <csignal>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <thread>
 
@@ -266,8 +267,8 @@ static td_s32 sample_start_vpss(ot_vpss_grp *vpss_grp, td_u32 vpss_grp_num,
                      arr_len * sizeof(td_bool));
 
   vpss_chn_enable[0] = TD_TRUE;
-  vpss_chn_attr[0].width = g_disp_size.width / 2;   /* 4:crop */
-  vpss_chn_attr[0].height = g_disp_size.height / 2; /* 4:crop */
+  vpss_chn_attr[0].width = g_disp_size.width;   /* 4:crop */
+  vpss_chn_attr[0].height = g_disp_size.height; /* 4:crop */
   vpss_chn_attr[0].depth = 1;
   vpss_chn_attr[0].compress_mode = OT_COMPRESS_MODE_NONE;
   vpss_chn_attr[0].chn_mode = OT_VPSS_CHN_MODE_USER;
@@ -275,6 +276,18 @@ static td_s32 sample_start_vpss(ot_vpss_grp *vpss_grp, td_u32 vpss_grp_num,
   // vpss_chn_attr[0].pixel_format = OT_PIXEL_FORMAT_YUV_SEMIPLANAR_420;
   vpss_chn_attr[0].frame_rate.src_frame_rate = -1;
   vpss_chn_attr[0].frame_rate.dst_frame_rate = -1;
+
+  vpss_chn_enable[1] = TD_TRUE;
+  (td_void) memset_s(&vpss_chn_attr[1], sizeof(ot_vpss_chn_attr), 0,
+                     sizeof(ot_vpss_chn_attr));
+  sample_comm_vpss_get_default_chn_attr(&vpss_chn_attr[1]);
+  vpss_chn_attr[1].width = g_disp_size.width / 2;   /* 4:crop */
+  vpss_chn_attr[1].height = g_disp_size.height / 2; /* 4:crop */
+  vpss_chn_attr[1].compress_mode = OT_COMPRESS_MODE_NONE;
+  vpss_chn_attr[1].chn_mode = OT_VPSS_CHN_MODE_USER;
+  // vpss_chn_attr[1].pixel_format = OT_PIXEL_FORMAT_YUV_400;
+  vpss_chn_attr[1].pixel_format = OT_PIXEL_FORMAT_YVU_SEMIPLANAR_420;
+  vpss_chn_attr[1].depth = 1;
 
   for (i = 0; i < vpss_grp_num; i++) {
     *vpss_grp = i;
@@ -397,10 +410,11 @@ void HardwareDecoder::decode_thread_step() {
   ot_vdec_stream stream;
   int packet_num = 0;
 
+  auto last_time = std::chrono::high_resolution_clock::now();
   while (decoding_) {
     if (mb_step_mode) {
       if (!mb_decode_step_on) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10)); // waiting
+        std::this_thread::sleep_for(std::chrono::milliseconds(3)); // waiting
         continue;
       } else {
         if (packet_num > 0) {
@@ -411,6 +425,18 @@ void HardwareDecoder::decode_thread_step() {
     } else {
       logger.log(ERROR, "mb_step_mode should be ture");
     }
+
+    // frame rate 25fps
+    auto current_time = std::chrono::high_resolution_clock::now();
+    auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            current_time - last_time)
+                            .count();
+    if (elapsed_time < 40) {
+      // Sleep to control the frame rate
+      std::this_thread::sleep_for(std::chrono::milliseconds(40 - elapsed_time));
+    }
+    last_time = current_time;
+
     if (av_read_frame(fmt_ctx_, &packet) < 0)
       continue;
 
@@ -430,9 +456,6 @@ void HardwareDecoder::decode_thread_step() {
         break;
       }
       packet_num++;
-      // if (packet_num > 2) {
-      //   mb_decode_step_on = false;
-      // }
       logger.log(DEBUG, "read frame number: ", packet_num);
     }
     av_packet_unref(&packet);
@@ -485,11 +508,85 @@ void HardwareDecoder::decode_thread() {
   g_sample_exit = 1;
 }
 
+bool HardwareDecoder::get_frames(void *img_H, ot_svp_dst_img *dst_L) {
+  td_s32 ret = ss_mpi_vpss_get_chn_frame(vpss_grp, 0, &frame_H, 100);
+  if (ret != TD_SUCCESS) {
+    sample_print("get chn frame-0 failed for Err(%#x)\n", ret);
+    return false;
+  }
+  // copy to frame
+  td_u32 height = frame_H.video_frame.height;
+  td_u32 width = frame_H.video_frame.width;
+  td_u32 size = height * width * 3 / 2; // 对于YUV420格式，大小为宽*高*1.5
+
+  td_void *yuv = ss_mpi_sys_mmap_cached(frame_H.video_frame.phys_addr[0], size);
+  if (yuv == NULL) {
+    sample_print("mmap failed!\n");
+    return false;
+  }
+
+  memcpy(img_H, yuv, size);
+
+  // -------------------- frame_L --------------------
+  ret = ss_mpi_vpss_get_chn_frame(vpss_grp, 1, &frame_L, 100);
+  if (ret != TD_SUCCESS) {
+    sample_print("get chn frame-1 failed for Err(%#x)\n", ret);
+    ret = ss_mpi_vdec_query_status(0, &vdec_status_);
+    if (ret != TD_SUCCESS) {
+      logger.log(ERROR, "Error querying VDEC status!");
+    } else {
+      std::stringstream ss;
+      ss << "INFO: \n"
+         << " type: " << vdec_status_.type
+         << ", left bytes: " << vdec_status_.left_stream_bytes
+         << ", left frames: " << vdec_status_.left_stream_frames
+         << ", left decoded_frames: " << vdec_status_.left_decoded_frames
+         << ", is_started: " << vdec_status_.is_started
+         << ", recv_stream_frames: " << vdec_status_.recv_stream_frames
+         << ", dec_stream_frames: " << vdec_status_.dec_stream_frames
+         << ", dec_w: " << vdec_status_.width
+         << ", dec_h: " << vdec_status_.height << std::endl
+         << "VDEC status error: \n"
+         << " set_pic_size_err: " << vdec_status_.dec_err.set_pic_size_err
+         << ", set_protocol_num_err: "
+         << vdec_status_.dec_err.set_protocol_num_err
+         << ", set_ref_num_err: " << vdec_status_.dec_err.set_ref_num_err
+         << ", set_pic_buf_size_err: "
+         << vdec_status_.dec_err.set_pic_buf_size_err
+         << ", format_err: " << vdec_status_.dec_err.format_err
+         << ", stream_unsupport: " << vdec_status_.dec_err.stream_unsupport
+         << ", pack_err: " << vdec_status_.dec_err.pack_err
+         << ", stream_size_over: " << vdec_status_.dec_err.stream_size_over
+         << ", stream not release: " << vdec_status_.dec_err.stream_not_release;
+      logger.log(DEBUG, ss.str());
+    }
+    return false;
+  }
+  // dma frame to ive image
+  td_bool is_instant = TD_TRUE;
+  ret = sample_common_ive_dma_image(&frame_L, dst_L, is_instant);
+  if (ret != TD_SUCCESS) {
+    sample_print("sample_ive_dma_image failed, Err(%#x)\n", ret);
+    return false;
+  }
+
+  ret = release_frames();
+  if (ret != TD_SUCCESS)
+    return false;
+  else {
+    if (mb_step_mode) {
+      // TODO: LOCK for thread safe
+      mb_decode_step_on = true;
+    }
+    return true;
+  }
+}
+
 bool HardwareDecoder::get_frame_without_release() {
   // NOTE: need release frames
   td_s32 ret = ss_mpi_vdec_query_status(0, &vdec_status_);
   if (ret != TD_SUCCESS) {
-    std::cerr << "Error querying VDEC status!" << std::endl;
+    logger.log(ERROR, "Error querying VDEC status!");
     return false;
   }
 
@@ -499,9 +596,10 @@ bool HardwareDecoder::get_frame_without_release() {
     return false;
   }
 
+  ret = ss_mpi_vpss_get_chn_frame(vpss_grp, 1, &frame_L, 100);
+
   if (ret != TD_SUCCESS) {
     sample_print("get chn-1 frame failed for Err(%#x)\n", ret);
-
     std::stringstream ss;
     ss << "INFO: \n"
        << " type: " << vdec_status_.type
@@ -530,7 +628,7 @@ bool HardwareDecoder::get_frame_without_release() {
     return false;
   } else {
     logger.log(DEBUG,
-               "Received frame_high with width: ", frame_H.video_frame.width);
+               "Received frame_Low with width: ", frame_L.video_frame.width);
   }
 
   if (mb_step_mode) {
@@ -585,4 +683,11 @@ bool HardwareDecoder::release_frames() {
     sample_print("vpss release chn frame-0 Err(%#x)\n", ret);
     return false;
   }
+
+  ret = ss_mpi_vpss_release_chn_frame(vpss_grp, 1, &frame_L);
+  if (ret != TD_SUCCESS) {
+    sample_print("vpss release chn frame-1 Err(%#x)\n", ret);
+    return false;
+  }
+  // mb_decode_step_on = true;
 }

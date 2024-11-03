@@ -9,11 +9,13 @@
 #include <csignal>
 #include <fstream>
 #include <half.hpp>
+#include <iterator>
 #include <nlohmann/json.hpp>
 #include <ost_utils.hpp>
 #include <sstream>
 #include <string>
 #include <vector>
+#include <algorithm>
 
 using half_float::half;
 using json = nlohmann::json;
@@ -31,8 +33,8 @@ int track_id = 0;
 void processTrackers(std::unordered_map<int, STrack> &trackers,
                      NNN_Ostrack_Callback &ostModel,
                      const std::vector<unsigned char> &img, int imageW,
-                     int imageH, int imageId, 
-                     std::ofstream &real_result_f, bool save_result) {
+                     int imageH, int imageId, std::ofstream &real_result_f,
+                     bool save_result) {
   for (auto it = trackers.begin(); it != trackers.end();) {
     int trackerId = it->first;
     auto &tr = it->second;
@@ -45,6 +47,9 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
     float search_resize_factor;
     int search_crop_x0, search_crop_y0;
     std::vector<float> tlwh_new;
+    int thres = 5;
+    int edge_thres_x = thres;
+    int edge_thres_y = OFFSET_H + thres;
 
     {
       Timer timer("model duration");
@@ -76,8 +81,10 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
                     << tr._tlwh[3] << std::endl;
     }
 
-    // 检查目标是否在图像边缘，如果是则移除该追踪器
-    if (isAtImageEdge(tr._tlwh, 5, IMAGE_HEIGHT, IMAGE_WIDTH)) {
+    // 检查目标是否在图像边缘或尺寸是否超过640x640，如果是则移除该追踪器
+    if (isAtImageEdge(tr._tlwh, edge_thres_x, edge_thres_y, IMAGE_HEIGHT,
+                      IMAGE_WIDTH) ||
+        tr._tlwh[2] > 640 || tr._tlwh[3] > 640) {
       it = trackers.erase(it);
     } else {
       ++it;
@@ -85,20 +92,42 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
   }
 }
 
+float cal_privilege(int cls_order, bool in_privileged_region) { return 0; }
+
 void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
                           std::vector<std::vector<std::vector<half>>> &det_bbox,
                           std::vector<std::vector<half>> &cls,
                           bool using_kal_filter, int track_max_num = 6,
-                          int selected_id = 1) {
-  int needed_track_num = track_max_num - tracks.size();
-  int added_num = 0;
+                          std::vector<int> selected_ids,
+                          float skip_iou_thres = 0.5,
+                          float delete_iou_thres = 0.3, int privileged_x0 = 0,
+                          int privileged_x1 = IMAGE_WIDTH,
+                          int privileged_y0 = 0,
+                          int privileged_y1 = IMAGE_HEIGHT) {
   const std::vector<std::vector<half>> &det_bbox_batch0 = det_bbox[0];
   const std::vector<half> &cls_batch0 = cls[0];
   const auto det_num = det_bbox_batch0.size();
+  // max iou of each tracker
+  std::unordered_map<int, float> track_ious;
+  for (const auto &tr : tracks) {
+    track_ious.emplace(tr.first, 0.f);
+  }
+
+  std::vector<std::pair<float, std::vector<float>>> to_be_added_dets_with_score;
+
+  float privilege_score = 0.f;
+  int index_ord = 0;
+  bool in_privileged_region = false;
   for (auto i = 0; i < det_num; ++i) {
     int cls_i = static_cast<int>(cls_batch0[i]);
-    if (cls_i != selected_id)
+
+    auto index_it = std::find(selected_ids.begin(), selected_ids.end(), cls_i);
+    if (index_it == selected_ids.end())
       continue;
+    else {
+      index_ord = std::distance(selected_ids.begin(), index_it);
+    }
+
     float iou = 0;
     const std::vector<half> &xyxy = det_bbox_batch0[i];
     for (const auto &tr : tracks) {
@@ -106,19 +135,55 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
       float iou_tmp = cal_iou(xyxy.data(), xyxy_tr.data());
       if (iou_tmp > iou)
         iou = iou_tmp;
+      if (iou_tmp > track_ious[tr.first])
+        track_ious[tr.first] = iou_tmp;
     }
-    if (iou > 0.1) {
+    if (iou > skip_iou_thres) {
       logger.log(DEBUG, "skip det in tracker-pool");
       continue;
     } else {
-      logger.log(DEBUG, "add det: ", xyxy[0], ", ", xyxy[1], ", ", xyxy[2],
-                 ", ", xyxy[3]);
+      logger.log(DEBUG, "to be add det: ", xyxy[0], ", ", xyxy[1], ", ",
+                 xyxy[2], ", ", xyxy[3]);
       std::vector<float> tlwh = xyxy2tlwh(xyxy);
-      tracks.emplace(track_id++, STrack(tlwh, using_kal_filter));
-      added_num++;
-      if (added_num == needed_track_num)
-        break;
+      // whether in privileged region
+      if (tlwh[0] < privileged_x1 && tlwh[0] >= privileged_x0 &&
+          tlwh[1] < privileged_y1 && tlwh[1] >= privileged_y0) {
+        in_privileged_region = true;
+      } else {
+        in_privileged_region = false;
+      }
+
+      privilege_score = cal_privilege(index_ord, in_privileged_region);
+      //
     }
+  }
+
+  // remove tracker who is not in detections
+  for (auto it = tracks.begin(); it != tracks.end();) {
+    auto &tr = it->second;
+    if (track_ious[tr.first] < delete_iou_thres) {
+      it = tracks.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
+  // add privilegedd
+  int needed_track_num = track_max_num - tracks.size();
+  int added_num = 0;
+  for (const auto &tlwh : to_be_added_dets_privilegedd) {
+    tracks.emplace(track_id++, Strack(tlwh, using_kal_filter));
+    added_num++;
+    if (added_num == needed_track_num)
+      return;
+  }
+
+  // add norm
+  for (const auto &tlwh : to_be_added_dets_norm) {
+    tracks.emplace(track_id++, Strack(tlwh, using_kal_filter));
+    added_num++;
+    if (added_num == needed_track_num)
+      return;
   }
 }
 
@@ -241,10 +306,10 @@ int main(int argc, char *argv[]) {
     {
       Timer timer("process one frame");
       if (decoder.get_frame_without_release()) {
-        std::cout << "Got one frame" << std::endl;
+        logger.log(DEBUG, "Got one frame");
         copy_yuv420_from_frame(reinterpret_cast<char *>(img.data()),
-                               &decoder.frame_H, IMAGE_HEIGHT, IMAGE_WIDTH, OFFSET_H,
-                               OFFSET_W);
+                               &decoder.frame_L, IMAGE_HEIGHT, IMAGE_WIDTH,
+                               OFFSET_H, OFFSET_W);
         // // debug
         // std::stringstream ss;
         // ss << "/mnt/data/sot/frame_" << imageId << ".jpg";
@@ -281,7 +346,6 @@ int main(int argc, char *argv[]) {
 
       decoder.release_frames();
     }
-
   }
 
   if (save_result && real_result_f.is_open()) {

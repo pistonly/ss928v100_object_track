@@ -36,6 +36,7 @@ while True:
     if not ret:
         print("can't receive frame. Existing...")
         break
+    _frame = cv2.resize(_frame, (1920, 1080))
     frame[36:-36] = _frame
 
     cv2.setWindowTitle("RTSP Stream", f"img_id: {img_id}")

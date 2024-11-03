@@ -11,6 +11,8 @@
 #include <sstream>
 #include <thread>
 
+extern Logger logger;
+
 volatile size_t NNN_Ostrack_Callback::mg_ostrack_callbackInterval = 0;
 volatile size_t NNN_Ostrack_Callback::mg_ostrack_startCallback = 0;
 bool NNN_Ostrack_Callback::mg_ostrack_isExit = false;
@@ -488,10 +490,9 @@ Result NNN_Ostrack_Callback::Execute() {
 }
 
 Result NNN_Ostrack_Callback::ExecuteRPN_Async() {
-  std::cout << "execute async" << std::endl;
+  logger.log(DEBUG, "execute async");
   aclrtSetCurrentContext(m_context);
   aclError ret = aclmdlExecuteAsync(m_modelId, mp_input, mp_output, m_stream);
-  std::cout << "execute async success" << std::endl;
 
   if (ret != ACL_SUCCESS) {
     ERROR_LOG("nnn execute async start error");
@@ -537,16 +538,14 @@ NNN_Ostrack_Callback::Device2Host(std::vector<std::vector<char>> &outputs) {
 }
 
 void NNN_Ostrack_Callback::StaticCallbackFunc(void *data) {
-  std::cout << "static callback" << std::endl;
   NNN_Ostrack_Callback *instance = static_cast<NNN_Ostrack_Callback *>(data);
   instance->CallbackFunc(data);
 }
 
 Result NNN_Ostrack_Callback::ExecuteCallback() {
-  std::cout << "execute callback" << std::endl;
+  logger.log(DEBUG, "execute callback");
   aclError ret = aclrtLaunchCallback(StaticCallbackFunc, (void *)this,
                                      ACL_CALLBACK_BLOCK, m_stream);
-  std::cout << "execute callback success" << std::endl;
   if (ret != ACL_SUCCESS) {
     ERROR_LOG("launch callback failed, error code: %d",
               static_cast<int32_t>(ret));
@@ -569,7 +568,6 @@ void NNN_Ostrack_Callback::ProcessCallback(aclrtContext context, void *arg) {
 }
 
 void NNN_Ostrack_Callback::CallbackFunc(void *data) {
-  std::cout << "callback from ostrack" << std::endl;
   Result ret = Device2Host(m_outputs);
   if (ret != SUCCESS) {
     std::cerr << "Device2host error" << std::endl;
@@ -800,7 +798,13 @@ void sample_target(int image_w, int image_h, int x0, int y0, int h, int w,
                    float &resize_factor, int &crop_x0, int &crop_y0,
                    int &crop_x1, int &crop_y1, int &pad_t, int &pad_b,
                    int &pad_l, int &pad_r, int &crop_sz) {
+  // NOTE:
   crop_sz = (int)(std::ceil(std::sqrt(w * h) * search_area_factor)) / 2 * 2;
+  // AIPP dynamic input src must be multiples of 16
+  crop_sz = (crop_sz / 16 + 1) * 16;
+  if (crop_sz > 640)
+    crop_sz = 640;
+
   float cx = x0 + 0.5 * w;
   float cy = y0 + 0.5 * h;
   crop_x0 = (int)(std::round(cx - crop_sz * 0.5)) / 2 * 2;
@@ -889,7 +893,8 @@ Result NNN_Ostrack_Callback::preprocess(
                   template_crop_x1, template_crop_y1, template_pad_t,
                   template_pad_b, template_pad_l, template_pad_r,
                   template_crop_sz);
-    int template_input_size = (template_crop_sz / 16 + 1) * 16;
+    // int template_input_size = (template_crop_sz / 16 + 1) * 16;
+    int template_input_size = template_crop_sz;
     std::vector<unsigned char> templateData(
         template_input_size * template_input_size * 1.5, 0);
     yuv_crop(img, imgW, imgH, template_crop_x0, template_crop_y0,
@@ -922,7 +927,8 @@ Result NNN_Ostrack_Callback::preprocess(
                 target_resize_factor, target_crop_x0, target_crop_y0,
                 target_crop_x1, target_crop_y1, target_pad_t, target_pad_b,
                 target_pad_l, target_pad_r, target_crop_sz);
-  int search_input_size = (target_crop_sz / 16 + 1) * 16;
+  // int search_input_size = (target_crop_sz / 16 + 1) * 16;
+  int search_input_size = target_crop_sz;
   if (search_input_size > 640)
     search_input_size = 640;
   std::vector<unsigned char> targetData(
@@ -993,7 +999,8 @@ Result NNN_Ostrack_Callback::preprocess(
                   template_crop_x1, template_crop_y1, template_pad_t,
                   template_pad_b, template_pad_l, template_pad_r,
                   template_crop_sz);
-    template_packet.template_input_size = (template_crop_sz / 16 + 1) * 16;
+    // template_packet.template_input_size = (template_crop_sz / 16 + 1) * 16;
+    template_packet.template_input_size = template_crop_sz;
     template_packet.templateData.assign(
         template_packet.template_input_size *
             template_packet.template_input_size * 1.5,
@@ -1002,7 +1009,7 @@ Result NNN_Ostrack_Callback::preprocess(
              template_crop_x1, template_crop_y1,
              template_packet.template_input_size,
              template_packet.template_input_size, template_packet.templateData);
-    // TODO: crop_w, crop_h may not be real size 
+    // TODO: crop_w, crop_h may not be real size
     template_packet.crop_w = template_crop_x1 - template_crop_x0;
     template_packet.crop_h = template_crop_y1 - template_crop_y0;
     template_packet.initialized = true;
@@ -1023,8 +1030,14 @@ Result NNN_Ostrack_Callback::preprocess(
   // copy to device
   ret = Host2Device(0, template_packet.templateData.data(),
                     template_packet.templateData.size());
-  if (ret != SUCCESS)
+  if (ret != SUCCESS) {
+    logger.log(
+        ERROR,
+        "set template AIPP error, crop_w, crop_h, srcSize, m_template_size: ",
+        template_packet.crop_w, ", ", template_packet.crop_h, ", ",
+        template_packet.template_input_size, ", ", m_template_size);
     return ret;
+  }
 
   // get search image
   int target_crop_x1, target_crop_y1, target_pad_t, target_pad_b, target_pad_l,
@@ -1034,9 +1047,7 @@ Result NNN_Ostrack_Callback::preprocess(
                 target_resize_factor, target_crop_x0, target_crop_y0,
                 target_crop_x1, target_crop_y1, target_pad_t, target_pad_b,
                 target_pad_l, target_pad_r, target_crop_sz);
-  int search_input_size = (target_crop_sz / 16 + 1) * 16;
-  if (search_input_size > 640)
-    search_input_size = 640;
+  int search_input_size = target_crop_sz;
   std::vector<unsigned char> targetData(
       search_input_size * search_input_size * 1.5, 0);
   yuv_crop(img, imgW, imgH, target_crop_x0, target_crop_y0, target_crop_x1,
@@ -1047,6 +1058,7 @@ Result NNN_Ostrack_Callback::preprocess(
   int crop_h = target_crop_y1 - target_crop_y0;
   SetAIPPPSrcSize(search_input_size, search_input_size);
   SetAIPPCrop(0, 0, crop_w, crop_h);
+
   // if (target_pad_t > 0 || target_pad_b > 0 || target_pad_l > 0 ||
   //     target_pad_r > 0) {
   //   int crop_target_w = crop_w * target_resize_factor;
@@ -1072,8 +1084,13 @@ Result NNN_Ostrack_Callback::preprocess(
   SetAIPPResize(crop_w, crop_h, m_search_size, m_search_size);
   SetAIPPPadding(0, 0, 0, 0);
   ret = SetAIPP(1);
-  if (ret != SUCCESS)
+  if (ret != SUCCESS) {
+    logger.log(
+        ERROR,
+        "set search AIPP error, crop_w, crop_h, srcSize, m_search_size: ",
+        crop_w, ", ", crop_h, ", ", search_input_size, ", ", m_search_size);
     return ret;
+  }
   // copy to device
   ret = Host2Device(1, targetData.data(), targetData.size());
   if (ret != SUCCESS)

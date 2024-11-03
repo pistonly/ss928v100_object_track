@@ -240,3 +240,15 @@ bool isAtImageEdge(std::vector<float> tlwh, int threshold, int image_height,
     return true;
   return false;
 }
+
+bool isAtImageEdge(std::vector<float> tlwh, int threshold_x, int threshold_y,
+                   int image_height, int image_width) {
+  const float x0 = tlwh[0];
+  const float y0 = tlwh[1];
+  const float x1 = x0 + tlwh[2];
+  const float y1 = y0 + tlwh[3];
+  if (x0 < threshold_x || y0 < threshold_y || x1 >= (image_width - threshold_x) ||
+      y1 >= (image_height - threshold_y))
+    return true;
+  return false;
+}

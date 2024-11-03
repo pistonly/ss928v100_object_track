@@ -1,3 +1,4 @@
+#include "utils.hpp"
 #include "nnn_ostrack_callback.hpp"
 #include <chrono>
 #include <fstream>
@@ -5,6 +6,7 @@
 #include <string>
 #include <vector>
 
+extern Logger logger;
 
 int main(int argc, char *argv[]) {
   // std::string omPath =

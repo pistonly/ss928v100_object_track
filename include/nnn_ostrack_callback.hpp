@@ -11,8 +11,8 @@
 #ifndef NNN_OSTRACK_CALLBACK_HPP
 #define NNN_OSTRACK_CALLBACK_HPP
 
-#include "acl/acl_mdl.h"
 #include "utils.hpp"
+#include "acl/acl_mdl.h"
 #include <cstddef>
 #include <cstdint>
 #include <string>
