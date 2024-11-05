@@ -92,18 +92,31 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
   }
 }
 
-float cal_privilege(int cls_order, bool in_privileged_region) { return 0; }
+float cal_privilege(int cls_order, bool in_privileged_region, float conf,
+                    float cls_coef, float region_coef, float conf_coef) {
+  float region_val;
+  if (in_privileged_region)
+    region_val = 1;
+  else
+    region_val = 0;
+
+  return (10 - cls_order) * cls_coef + region_val * region_coef +
+         conf * conf_coef;
+}
 
 void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
                           std::vector<std::vector<std::vector<half>>> &det_bbox,
+                          std::vector<std::vector<half>> det_conf,
                           std::vector<std::vector<half>> &cls,
                           bool using_kal_filter, std::vector<int> selected_ids,
                           int track_max_num = 6, float skip_iou_thres = 0.5,
                           float delete_iou_thres = 0.3, int privileged_x0 = 0,
                           int privileged_x1 = IMAGE_WIDTH,
                           int privileged_y0 = 0,
-                          int privileged_y1 = IMAGE_HEIGHT) {
+                          int privileged_y1 = IMAGE_HEIGHT, float cls_coef = 10,
+                          float region_coef = 100, float conf_coef = 1.f) {
   const std::vector<std::vector<half>> &det_bbox_batch0 = det_bbox[0];
+  const std::vector<half> &det_conf_batch0 = det_conf[0];
   const std::vector<half> &cls_batch0 = cls[0];
   const auto det_num = det_bbox_batch0.size();
   // max iou of each tracker
@@ -129,6 +142,7 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
 
     float iou = 0;
     const std::vector<half> &xyxy = det_bbox_batch0[i];
+
     for (const auto &tr : tracks) {
       const std::vector<float> &xyxy_tr = tlwh2xyxy(tr.second._tlwh);
       float iou_tmp = cal_iou(xyxy.data(), xyxy_tr.data());
@@ -152,8 +166,12 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
         in_privileged_region = false;
       }
 
-      privilege_score = cal_privilege(index_ord, in_privileged_region);
+      privilege_score =
+          cal_privilege(index_ord, in_privileged_region, det_conf_batch0[i],
+                        cls_coef, region_coef, conf_coef);
       //
+      to_be_added_dets_with_score.push_back(
+          std::make_pair(privilege_score, std::move(tlwh)));
     }
   }
 
@@ -167,24 +185,22 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
   }
 
   // sort dets by privilege_score;
+  std::sort(to_be_added_dets_with_score.begin(),
+            to_be_added_dets_with_score.end(),
+            [](const std::pair<float, std::vector<float>> &a,
+               const std::pair<float, std::vector<float>> &b) {
+              return a.first > b.first;
+            });
 
-  // // add privilegedd
-  // int needed_track_num = track_max_num - tracks.size();
-  // int added_num = 0;
-  // for (const auto &tlwh : to_be_added_dets_privilegedd) {
-  //   tracks.emplace(track_id++, Strack(tlwh, using_kal_filter));
-  //   added_num++;
-  //   if (added_num == needed_track_num)
-  //     return;
-  // }
-
-  // // add norm
-  // for (const auto &tlwh : to_be_added_dets_norm) {
-  //   tracks.emplace(track_id++, Strack(tlwh, using_kal_filter));
-  //   added_num++;
-  //   if (added_num == needed_track_num)
-  //     return;
-  // }
+  // add trackers
+  int needed_track_num = track_max_num - tracks.size();
+  int added_num = 0;
+  for (const auto &tlwh_pair : to_be_added_dets_with_score) {
+    tracks.emplace(track_id++, STrack(tlwh_pair.second, using_kal_filter));
+    added_num++;
+    if (added_num == needed_track_num)
+      return;
+  }
 }
 
 int main(int argc, char *argv[]) {
@@ -250,8 +266,7 @@ int main(int argc, char *argv[]) {
   std::chrono::microseconds yolov8_time_interval(yolov8_time_interval_s *
                                                  1000000); // 微秒
 
-  int selected_det_id = config_data["selected_det_id"];
-  std::vector<int> selected_det_ids = {selected_det_id};
+  std::vector<int> selected_det_ids = config_data["selected_det_ids"].get<std::vector<int>>();
   int max_tracker_num = config_data["max_tracker_num"];
 
   // VDEC source
@@ -328,8 +343,9 @@ int main(int argc, char *argv[]) {
           // std::cout << "yolov8 processing ..." << std::endl;
           yolov8.process_one_image(img, det_bbox, det_conf, det_cls);
           std::cout << "add tracks ... " << std::endl;
-          add_tracks_from_dets(trackers, det_bbox, det_cls, using_kal_filter,
-                               selected_det_ids, max_tracker_num);
+          add_tracks_from_dets(trackers, det_bbox, det_conf, det_cls,
+                               using_kal_filter, selected_det_ids,
+                               max_tracker_num);
           last_yolov8_time = now;
         }
 
