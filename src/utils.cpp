@@ -10,6 +10,18 @@
 #include <unistd.h>
 #include <vector>
 
+#include <sys/stat.h>
+
+#include <cstdio>
+#include <ctime>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <sys/time.h>
+#include <time.h>
+
 // 全局日志器实例，初始日志级别为 INFO
 Logger logger(INFO);
 
@@ -17,7 +29,7 @@ static std::map<int, std::vector<int>> camera_id_map = {
     {11, {0x11, 0x12}}, {12, {0x13, 0x14}}, {13, {0x15, 0x16}},
     {21, {0x21, 0x22}}, {22, {0x23, 0x24}}, {23, {0x25, 0x26}},
     {31, {0x31, 0x32}}, {32, {0x33, 0x34}}, {33, {0x35, 0x36}},
-    {100, {0x64}}};
+    {100, {0x37}}};
 
 void copy_yuv420_from_frame(char *yuv420, ot_video_frame_info *frame) {
   td_u32 height = frame->video_frame.height;
@@ -247,8 +259,122 @@ bool isAtImageEdge(std::vector<float> tlwh, int threshold_x, int threshold_y,
   const float y0 = tlwh[1];
   const float x1 = x0 + tlwh[2];
   const float y1 = y0 + tlwh[3];
-  if (x0 < threshold_x || y0 < threshold_y || x1 >= (image_width - threshold_x) ||
-      y1 >= (image_height - threshold_y))
+  if (x0 < threshold_x || y0 < threshold_y ||
+      x1 >= (image_width - threshold_x) || y1 >= (image_height - threshold_y))
     return true;
   return false;
+}
+
+std::string from_pts_to_dirName(unsigned long long framePts) {
+  // 将毫秒转换为秒
+  time_t timeSec = framePts / 1000;
+  tm *ptm = localtime(&timeSec);
+  if (ptm == nullptr) {
+    std::cerr << "Failed to convert framePts to local time." << std::endl;
+    return std::string("_");
+  }
+
+  std::ostringstream oss;
+  oss << std::setw(4) << (ptm->tm_year + 1900) // 年份，四位
+      << std::setw(2) << std::setfill('0') << (ptm->tm_mon + 1) // 月份，两位
+      << std::setw(2) << std::setfill('0') << ptm->tm_mday // 日期，两位
+      << "_" << std::setw(2) << std::setfill('0') << ptm->tm_hour // 小时，两位
+      << std::setw(2) << std::setfill('0') << ptm->tm_min  // 分钟，两位
+      << std::setw(2) << std::setfill('0') << ptm->tm_sec; // 秒数，两位
+
+  return oss.str();
+}
+
+bool file_exists(const std::string &name) {
+  struct stat buffer;
+  return (stat(name.c_str(), &buffer) == 0);
+}
+
+bool directory_exists(const std::string &path) {
+  struct stat buffer;
+  // Check if path exists and is a directory
+  return (stat(path.c_str(), &buffer) == 0 && S_ISDIR(buffer.st_mode));
+}
+
+bool create_directory(const std::string &path) {
+  // 模式0755是目录的典型权限
+  return mkdir(path.c_str(), 0755) == 0 || errno == EEXIST;
+}
+
+std::ofstream create_file_from_pts(const std::string &parent_dir,
+                         const std::string &fileName, unsigned long long pts) {
+  std::string base_dir = parent_dir + "/" + from_pts_to_dirName(pts);
+  std::string base_path = base_dir + "/" + fileName;
+
+  try {
+    if (directory_exists(base_dir)) {
+      // results.csv exists
+      int N = 1;
+      while (true) {
+        std::string new_dir = base_dir + "_" + std::to_string(N);
+        if (!directory_exists(new_dir)) {
+          // rename current_dir to current_dir_N
+          if (std::rename(base_dir.c_str(), new_dir.c_str()) != 0) {
+            std::cerr << "Error: Could not rename " << base_dir << " to "
+                      << new_dir << std::endl;
+            return std::ofstream("create_wrong_file");
+          }
+          break;
+        }
+        N++;
+      }
+    }
+
+    // Create a base_dir and file .
+    create_directory(base_dir);
+
+    std::ofstream ofs(base_path.c_str());
+    return ofs;
+  } catch (const std::exception &e) {
+    std::cerr << "Error: Exception occurred: " << e.what() << std::endl;
+    return std::ofstream("create_wrong_file");
+  }
+}
+
+std::ofstream create_file_from_pts(const std::string &parent_dir,
+                         const std::string &fileName) {
+
+  // 获取当前时间
+  std::time_t t = std::time(nullptr);
+  char time_buffer[20];
+  std::strftime(time_buffer, sizeof(time_buffer), "%Y%m%d_%H%M%S",
+                std::localtime(&t));
+  std::string time_str(time_buffer);
+
+  std::string base_dir = parent_dir + "/" + time_str;
+  std::string base_path = base_dir + "/" + fileName;
+
+  try {
+    if (directory_exists(base_dir)) {
+      // results.csv exists
+      int N = 1;
+      while (true) {
+        std::string new_dir = base_dir + "_" + std::to_string(N);
+        if (!directory_exists(new_dir)) {
+          // rename current_dir to current_dir_N
+          if (std::rename(base_dir.c_str(), new_dir.c_str()) != 0) {
+            std::cerr << "Error: Could not rename " << base_dir << " to "
+                      << new_dir << std::endl;
+            return std::ofstream("create_wrong_file");
+          }
+          break;
+        }
+        N++;
+      }
+    }
+
+    // Create a base_dir and file .
+    create_directory(base_dir);
+
+    std::ofstream ofs(base_path.c_str());
+    return ofs;
+  } catch (const std::exception &e) {
+    std::cerr << "Error: Exception occurred: " << e.what() << std::endl;
+    return std::ofstream("create_wrong_file");
+  }
 }

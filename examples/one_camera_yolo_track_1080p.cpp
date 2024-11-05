@@ -4,6 +4,7 @@
 #include "post_process_tools.hpp"
 #include "utils.hpp"
 #include "yolov8.hpp"
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -15,7 +16,6 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include <algorithm>
 
 using half_float::half;
 using json = nlohmann::json;
@@ -97,9 +97,8 @@ float cal_privilege(int cls_order, bool in_privileged_region) { return 0; }
 void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
                           std::vector<std::vector<std::vector<half>>> &det_bbox,
                           std::vector<std::vector<half>> &cls,
-                          bool using_kal_filter, int track_max_num = 6,
-                          std::vector<int> selected_ids,
-                          float skip_iou_thres = 0.5,
+                          bool using_kal_filter, std::vector<int> selected_ids,
+                          int track_max_num = 6, float skip_iou_thres = 0.5,
                           float delete_iou_thres = 0.3, int privileged_x0 = 0,
                           int privileged_x1 = IMAGE_WIDTH,
                           int privileged_y0 = 0,
@@ -160,31 +159,32 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
 
   // remove tracker who is not in detections
   for (auto it = tracks.begin(); it != tracks.end();) {
-    auto &tr = it->second;
-    if (track_ious[tr.first] < delete_iou_thres) {
+    if (track_ious[it->first] < delete_iou_thres) {
       it = tracks.erase(it);
     } else {
       ++it;
     }
   }
 
-  // add privilegedd
-  int needed_track_num = track_max_num - tracks.size();
-  int added_num = 0;
-  for (const auto &tlwh : to_be_added_dets_privilegedd) {
-    tracks.emplace(track_id++, Strack(tlwh, using_kal_filter));
-    added_num++;
-    if (added_num == needed_track_num)
-      return;
-  }
+  // sort dets by privilege_score;
 
-  // add norm
-  for (const auto &tlwh : to_be_added_dets_norm) {
-    tracks.emplace(track_id++, Strack(tlwh, using_kal_filter));
-    added_num++;
-    if (added_num == needed_track_num)
-      return;
-  }
+  // // add privilegedd
+  // int needed_track_num = track_max_num - tracks.size();
+  // int added_num = 0;
+  // for (const auto &tlwh : to_be_added_dets_privilegedd) {
+  //   tracks.emplace(track_id++, Strack(tlwh, using_kal_filter));
+  //   added_num++;
+  //   if (added_num == needed_track_num)
+  //     return;
+  // }
+
+  // // add norm
+  // for (const auto &tlwh : to_be_added_dets_norm) {
+  //   tracks.emplace(track_id++, Strack(tlwh, using_kal_filter));
+  //   added_num++;
+  //   if (added_num == needed_track_num)
+  //     return;
+  // }
 }
 
 int main(int argc, char *argv[]) {
@@ -251,6 +251,7 @@ int main(int argc, char *argv[]) {
                                                  1000000); // 微秒
 
   int selected_det_id = config_data["selected_det_id"];
+  std::vector<int> selected_det_ids = {selected_det_id};
   int max_tracker_num = config_data["max_tracker_num"];
 
   // VDEC source
@@ -292,7 +293,7 @@ int main(int argc, char *argv[]) {
   signal(SIGINT, signal_handler); // Capture Ctrl+C
 
   // Save results
-  std::ofstream real_result_f(output_dir + "results.csv");
+  std::ofstream real_result_f = create_file_from_pts(output_dir, "results.csv");
   if (!real_result_f) {
     logger.log(ERROR, "opening file for writing: ", output_dir + "results.csv");
   } else {
@@ -328,7 +329,7 @@ int main(int argc, char *argv[]) {
           yolov8.process_one_image(img, det_bbox, det_conf, det_cls);
           std::cout << "add tracks ... " << std::endl;
           add_tracks_from_dets(trackers, det_bbox, det_cls, using_kal_filter,
-                               max_tracker_num, selected_det_id);
+                               selected_det_ids, max_tracker_num);
           last_yolov8_time = now;
         }
 

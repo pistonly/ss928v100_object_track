@@ -33,7 +33,7 @@ public:
     }
   }
 
-  LogLevel get_level(){return log_level;}
+  LogLevel get_level() { return log_level; }
 
 private:
   LogLevel log_level;
@@ -186,19 +186,19 @@ void save_output(const std::string &output_dir, const std::string output_stem,
  * @param[in] frame Description
  */
 void copy_yuv420_from_frame(char *yuv420, ot_video_frame_info *frame);
-void copy_yuv420_from_frame(char *yuv420, ot_video_frame_info *frame, int yuv_H, int yuv_W, int offsize_H, int offset_W);
+void copy_yuv420_from_frame(char *yuv420, ot_video_frame_info *frame, int yuv_H,
+                            int yuv_W, int offsize_H, int offset_W);
 void saveBinaryFile(const std::vector<unsigned char> &data,
                     const std::string &filePath);
 void saveBinaryFile(const std::vector<char> &data, const std::string &filePath);
 
 std::vector<std::vector<float>> readCSV(const std::string &filename);
 
-bool isAtImageEdge(std::vector<float> tlwh, int threshold = 5,
-                   int image_height = 2160, int image_width = 3840);
+bool isAtImageEdge(std::vector<float> tlwh, int threshold, int image_height,
+                   int image_width);
 
-bool isAtImageEdge(std::vector<float> tlwh, int threshold_x = 5,
-                   int threshold_y = 5, int image_height = 2160,
-                   int image_width = 3840);
+bool isAtImageEdge(std::vector<float> tlwh, int threshold_x, int threshold_y,
+                   int image_height, int image_width);
 
 #ifdef ENABLE_TIMER
 class Timer {
@@ -237,4 +237,10 @@ void save_one_track_result_csv(
     std::ofstream &outFile, const std::vector<std::vector<float>> &tracker_res,
     uint8_t cameraId, uint64_t ts);
 
+std::ofstream create_file_from_pts(const std::string &parent_dir,
+                                   const std::string &fileName);
+
+std::ofstream create_file_from_pts(const std::string &parent_dir,
+                                   const std::string &fileName,
+                                   unsigned long long pts);
 #endif

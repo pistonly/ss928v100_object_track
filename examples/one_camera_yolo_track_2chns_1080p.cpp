@@ -70,6 +70,7 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
                      int imageH, uint8_t cameraId, uint64_t timestamp,
                      std::ofstream &real_result_f, bool save_result,
                      bool b_tcp_send) {
+  std::vector<std::vector<float>> track_res;
   for (auto it = trackers.begin(); it != trackers.end();) {
     int trackerId = it->first;
     auto &tr = it->second;
@@ -82,6 +83,9 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
     float search_resize_factor;
     int search_crop_x0, search_crop_y0;
     std::vector<float> tlwh_new;
+    int thres = 5;
+    int edge_thres_x = thres;
+    int edge_thres_y = OFFSET_H + thres;
 
     {
       Timer timer("model duration");
@@ -109,28 +113,40 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
 
     // NOTE: tcp client need: x0, y0, x1, y1, conf, track_id at 1920x1080 frame.
     int offset_y = -1 * OFFSET_H;
-    std::vector<std::vector<float>> track_res(
-        {{tr._tlwh[0], tr._tlwh[1] + offset_y, tr._tlwh[0] + tr._tlwh[2],
-          tr._tlwh[0] + tr._tlwh[3] + offset_y, 0.f, trackerId}});
+    // std::vector<std::vector<float>> track_res(
+    //     {{tr._tlwh[0], tr._tlwh[1] + offset_y, tr._tlwh[0] + tr._tlwh[2],
+    //       tr._tlwh[0] + tr._tlwh[3] + offset_y, 0.f, trackerId}});
+    // for 2K visualization
+    std::vector<float> track_res_one(
+        {tr._tlwh[0] / 2, (tr._tlwh[1] + offset_y) / 2,
+         (tr._tlwh[0] + tr._tlwh[2]) / 2,
+         (tr._tlwh[0] + tr._tlwh[3] + offset_y) / 2, 0.f, trackerId});
+    track_res.push_back(track_res_one);
+    // std::vector<std::vector<float>> track_res(
+    //     {{tr._tlwh[0] / 2, (tr._tlwh[1] + offset_y) / 2,
+    //       (tr._tlwh[0] + tr._tlwh[2]) / 2,
+    //       (tr._tlwh[0] + tr._tlwh[3] + offset_y) / 2, 0.f, trackerId}});
 
-    if (save_result && real_result_f.is_open()) {
-      save_one_track_result_csv(real_result_f, track_res, cameraId, timestamp);
-    }
-
-    if (b_tcp_send) {
-      if (!tcp_obj.mb_sock_connected && tcp_obj.mb_tcpIp_setted) {
-        tcp_obj.connect_to_tcp();
-      }
-      if (tcp_obj.mb_sock_connected) {
-        send_track_result(tcp_obj.m_sock, track_res, cameraId, timestamp);
-      }
-    }
-
-    // 检查目标是否在图像边缘，如果是则移除该追踪器
-    if (isAtImageEdge(tr._tlwh, 5, IMAGE_HEIGHT, IMAGE_WIDTH)) {
+    // 检查目标是否在图像边缘或尺寸是否超过640x640，如果是则移除该追踪器
+    if (isAtImageEdge(tr._tlwh, edge_thres_x, edge_thres_y, IMAGE_HEIGHT,
+                      IMAGE_WIDTH) ||
+        tr._tlwh[2] > 640 || tr._tlwh[3] > 640) {
       it = trackers.erase(it);
     } else {
       ++it;
+    }
+  }
+
+  if (save_result && real_result_f.is_open()) {
+    save_one_track_result_csv(real_result_f, track_res, cameraId, timestamp);
+  }
+
+  if (b_tcp_send) {
+    if (!tcp_obj.mb_sock_connected && tcp_obj.mb_tcpIp_setted) {
+      tcp_obj.connect_to_tcp();
+    }
+    if (tcp_obj.mb_sock_connected) {
+      send_track_result(tcp_obj.m_sock, track_res, cameraId, timestamp);
     }
   }
 }
@@ -157,9 +173,13 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
       if (iou_tmp > iou)
         iou = iou_tmp;
     }
-    if (iou > 0.1)
+    if (iou > 0.1) {
+      logger.log(DEBUG, "skip det in tracker-pool");
       continue;
-    else {
+    } else {
+      logger.log(DEBUG, "to be add det: ", xyxy[0], ", ", xyxy[1], ", ",
+                 xyxy[2], ", ", xyxy[3]);
+
       std::vector<float> tlwh = xyxy2tlwh(xyxy);
       tracks.emplace(track_id++, STrack(tlwh, using_kal_filter));
       added_num++;
@@ -210,8 +230,8 @@ int main(int argc, char *argv[]) {
   }
 
   std::vector<std::string> required_keys = {
-      "om_path",        "yolov8_om_path", "tcp_ip",           "tcp_port",
-      "output_dir",     "save_result",    "decode_step_mode"};
+      "om_path",    "yolov8_om_path", "tcp_ip",          "tcp_port",
+      "output_dir", "save_result",    "decode_step_mode"};
   for (const auto &key : required_keys) {
     if (!config_data.contains(key)) {
       logger.log(ERROR, "Can't find key: ", key);
@@ -256,6 +276,8 @@ int main(int argc, char *argv[]) {
   std::vector<uint8_t> v_cameraIds;
   getCameraId_pair(v_cameraIds);
 
+  logger.log(INFO, "cameraId number: ", v_cameraIds.size());
+
   // Initialize OST model
   NNN_Ostrack_Callback ostModel(omPath, template_factor, search_area_factor,
                                 template_size, search_size);
@@ -290,7 +312,8 @@ int main(int argc, char *argv[]) {
       }
 
       copy_yuv420_from_frame(reinterpret_cast<char *>(img.data()),
-                             &v_frame_chs[current_ch], IMAGE_HEIGHT, IMAGE_WIDTH, OFFSET_H, OFFSET_W);
+                             &v_frame_chs[current_ch], IMAGE_HEIGHT,
+                             IMAGE_WIDTH, OFFSET_H, OFFSET_W);
 
       auto &trackers = v_trackers[current_ch];
       auto &last_yolo_ts = v_last_yolo_ts[current_ch];
@@ -311,8 +334,7 @@ int main(int argc, char *argv[]) {
         STrack::multi_predict(trackers);
       }
 
-      processTrackers(trackers, ostModel, img, imageW, imageH,
-                      current_cameraId,
+      processTrackers(trackers, ostModel, img, imageW, imageH, current_cameraId,
                       v_frame_chs[current_ch].video_frame.pts / 1000,
                       real_result_f, save_result, true);
 
