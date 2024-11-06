@@ -270,7 +270,7 @@ void save_detect_results_csv(
       outFile << v << ",";
     }
     // conf
-    outFile << det_conf_0[i];
+    outFile << det_conf_0[i] << ",";
     // cls
     outFile << det_cls_0[i] << std::endl;
   }
