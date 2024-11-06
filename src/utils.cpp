@@ -25,11 +25,17 @@
 // 全局日志器实例，初始日志级别为 INFO
 Logger logger(INFO);
 
+// static std::map<int, std::vector<int>> camera_id_map = {
+//     {11, {0x11, 0x12}}, {12, {0x13, 0x14}}, {13, {0x15, 0x16}},
+//     {21, {0x21, 0x22}}, {22, {0x23, 0x24}}, {23, {0x25, 0x26}},
+//     {31, {0x31, 0x32}}, {32, {0x33, 0x34}}, {33, {0x35, 0x36}},
+//     {100, {0x37}}};
+
 static std::map<int, std::vector<int>> camera_id_map = {
-    {11, {0x11, 0x12}}, {12, {0x13, 0x14}}, {13, {0x15, 0x16}},
-    {21, {0x21, 0x22}}, {22, {0x23, 0x24}}, {23, {0x25, 0x26}},
-    {31, {0x31, 0x32}}, {32, {0x33, 0x34}}, {33, {0x35, 0x36}},
-    {100, {0x37}}};
+    {11, {1, 2}}, {12, {3, 4}}, {13, {5, 6}},
+    {21, {7, 8}}, {22, {9, 10}}, {23, {11, 12}},
+    {31, {13, 14}}, {32, {15, 16}}, {33, {17, 18}},
+    {100, {19}}};
 
 void copy_yuv420_from_frame(char *yuv420, ot_video_frame_info *frame) {
   td_u32 height = frame->video_frame.height;
@@ -313,6 +319,26 @@ std::string from_pts_to_dirName(unsigned long long framePts) {
       << std::setw(2) << std::setfill('0') << ptm->tm_min  // 分钟，两位
       << std::setw(2) << std::setfill('0') << ptm->tm_sec; // 秒数，两位
 
+  return oss.str();
+}
+
+std::string from_pts_to_strWithMilliseconds(unsigned long long framePts) {
+  // 将毫秒转换为秒
+  time_t timeSec = framePts / 1000;
+  tm *ptm = localtime(&timeSec);
+  if (ptm == nullptr) {
+    std::cerr << "Failed to convert framePts to local time." << std::endl;
+    return std::string("_");
+  }
+
+  std::ostringstream oss;
+  oss << std::setw(4) << (ptm->tm_year + 1900) // 年份，四位
+      << std::setw(2) << std::setfill('0') << (ptm->tm_mon + 1) // 月份，两位
+      << std::setw(2) << std::setfill('0') << ptm->tm_mday // 日期，两位
+      << "_" << std::setw(2) << std::setfill('0') << ptm->tm_hour // 小时，两位
+      << std::setw(2) << std::setfill('0') << ptm->tm_min  // 分钟，两位
+      << std::setw(2) << std::setfill('0') << ptm->tm_sec // 秒数，两位
+      << std::setw(3) << std::setfill('0') << framePts % 1000; // ms, 3
   return oss.str();
 }
 

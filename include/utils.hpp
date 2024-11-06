@@ -258,4 +258,6 @@ void save_detect_results_csv(
     const std::string &filename);
 
 std::string getCurrentTimeWithMilliseconds();
+std::string from_pts_to_strWithMilliseconds(unsigned long long framePts);
+
 #endif

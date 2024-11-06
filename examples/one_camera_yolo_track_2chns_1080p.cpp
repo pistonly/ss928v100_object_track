@@ -151,41 +151,114 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
   }
 }
 
+float cal_privilege(int cls_order, bool in_privileged_region, float conf,
+                    float cls_coef, float region_coef, float conf_coef) {
+  float region_val;
+  if (in_privileged_region)
+    region_val = 1;
+  else
+    region_val = 0;
+
+  return (10 - cls_order) * cls_coef + region_val * region_coef +
+         conf * conf_coef;
+}
+
 void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
                           std::vector<std::vector<std::vector<half>>> &det_bbox,
+                          std::vector<std::vector<half>> det_conf,
                           std::vector<std::vector<half>> &cls,
-                          bool using_kal_filter, int track_max_num = 6,
-                          int selected_id = 1) {
-  int needed_track_num = track_max_num - tracks.size();
-  int added_num = 0;
+                          bool using_kal_filter, std::vector<int> selected_ids,
+                          int track_max_num = 6, float skip_iou_thres = 0.5,
+                          float delete_iou_thres = 0.3, int privileged_x0 = 0,
+                          int privileged_x1 = IMAGE_WIDTH,
+                          int privileged_y0 = 0,
+                          int privileged_y1 = IMAGE_HEIGHT, float cls_coef = 10,
+                          float region_coef = 100, float conf_coef = 1.f) {
   const std::vector<std::vector<half>> &det_bbox_batch0 = det_bbox[0];
+  const std::vector<half> &det_conf_batch0 = det_conf[0];
   const std::vector<half> &cls_batch0 = cls[0];
   const auto det_num = det_bbox_batch0.size();
+  // max iou of each tracker
+  std::unordered_map<int, float> track_ious;
+  for (const auto &tr : tracks) {
+    track_ious.emplace(tr.first, 0.f);
+  }
+
+  std::vector<std::pair<float, std::vector<float>>> to_be_added_dets_with_score;
+
+  float privilege_score = 0.f;
+  int index_ord = 0;
+  bool in_privileged_region = false;
   for (auto i = 0; i < det_num; ++i) {
     int cls_i = static_cast<int>(cls_batch0[i]);
-    if (cls_i != selected_id)
+
+    auto index_it = std::find(selected_ids.begin(), selected_ids.end(), cls_i);
+    if (index_it == selected_ids.end())
       continue;
+    else {
+      index_ord = std::distance(selected_ids.begin(), index_it);
+    }
+
     float iou = 0;
     const std::vector<half> &xyxy = det_bbox_batch0[i];
+
     for (const auto &tr : tracks) {
       const std::vector<float> &xyxy_tr = tlwh2xyxy(tr.second._tlwh);
       float iou_tmp = cal_iou(xyxy.data(), xyxy_tr.data());
       if (iou_tmp > iou)
         iou = iou_tmp;
+      if (iou_tmp > track_ious[tr.first])
+        track_ious[tr.first] = iou_tmp;
     }
-    if (iou > 0.1) {
+    if (iou > skip_iou_thres) {
       logger.log(DEBUG, "skip det in tracker-pool");
       continue;
     } else {
       logger.log(DEBUG, "to be add det: ", xyxy[0], ", ", xyxy[1], ", ",
                  xyxy[2], ", ", xyxy[3]);
-
       std::vector<float> tlwh = xyxy2tlwh(xyxy);
-      tracks.emplace(track_id++, STrack(tlwh, using_kal_filter));
-      added_num++;
-      if (added_num == needed_track_num)
-        break;
+      // whether in privileged region
+      if (tlwh[0] < privileged_x1 && tlwh[0] >= privileged_x0 &&
+          tlwh[1] < privileged_y1 && tlwh[1] >= privileged_y0) {
+        in_privileged_region = true;
+      } else {
+        in_privileged_region = false;
+      }
+
+      privilege_score =
+          cal_privilege(index_ord, in_privileged_region, det_conf_batch0[i],
+                        cls_coef, region_coef, conf_coef);
+      //
+      to_be_added_dets_with_score.push_back(
+          std::make_pair(privilege_score, std::move(tlwh)));
     }
+  }
+
+  // remove tracker who is not in detections
+  for (auto it = tracks.begin(); it != tracks.end();) {
+    if (track_ious[it->first] < delete_iou_thres) {
+      it = tracks.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
+  // sort dets by privilege_score;
+  std::sort(to_be_added_dets_with_score.begin(),
+            to_be_added_dets_with_score.end(),
+            [](const std::pair<float, std::vector<float>> &a,
+               const std::pair<float, std::vector<float>> &b) {
+              return a.first > b.first;
+            });
+
+  // add trackers
+  int needed_track_num = track_max_num - tracks.size();
+  int added_num = 0;
+  for (const auto &tlwh_pair : to_be_added_dets_with_score) {
+    tracks.emplace(track_id++, STrack(tlwh_pair.second, using_kal_filter));
+    added_num++;
+    if (added_num == needed_track_num)
+      return;
   }
 }
 
@@ -249,7 +322,8 @@ int main(int argc, char *argv[]) {
   std::string output_dir = config_data["output_dir"];
   int yolov8_time_interval = config_data["yolov8_time_interval"]; // s
   yolov8_time_interval *= 1000000;                                // us
-  int selected_det_id = config_data["selected_det_id"];
+  std::vector<int> selected_det_ids =
+      config_data["selected_det_ids"].get<std::vector<int>>();
   int max_tracker_num = config_data["max_tracker_num"];
 
   // VDEC source
@@ -294,7 +368,8 @@ int main(int argc, char *argv[]) {
   signal(SIGINT, signal_handler); // Capture Ctrl+C
 
   // Save results
-  std::ofstream real_result_f(output_dir + "results.csv");
+  std::ofstream real_result_f =
+      create_file_from_pts(output_dir, "results.csv", output_dir);
   if (!real_result_f) {
     logger.log(ERROR, "opening file for writing: ", output_dir + "results.csv");
   } else {
@@ -324,9 +399,17 @@ int main(int argc, char *argv[]) {
         Timer timer("yolov8 processing ...");
         yolov8.process_one_image(img, det_bbox, det_conf, det_cls);
         logger.log(DEBUG, "add tracks ...");
-        add_tracks_from_dets(trackers, det_bbox, det_cls, using_kal_filter,
-                             max_tracker_num, selected_det_id);
+        add_tracks_from_dets(trackers, det_bbox, det_conf, det_cls,
+                             using_kal_filter, selected_det_ids,
+                             max_tracker_num);
         last_yolo_ts = v_frame_chs[current_ch].video_frame.pts;
+        // save yolov8 results
+        std::string det_file_name =
+            from_pts_to_strWithMilliseconds(
+                v_frame_chs[current_ch].video_frame.pts / 1000) +
+            "_" + std::to_string(det_bbox[0].size()) + ".csv";
+        save_detect_results_csv(det_bbox, det_conf, det_cls, output_dir,
+                                det_file_name);
       }
 
       // Use Kalman filter if enabled
