@@ -241,6 +241,37 @@ void save_one_track_result_csv(
   }
 }
 
+void save_detect_results_csv(
+    const std::vector<std::vector<std::vector<half>>> det_bbox,
+    const std::vector<std::vector<half>> det_conf,
+    const std::vector<std::vector<half>> det_cls, const std::string &out_dir,
+    const std::string &filename) {
+  std::ofstream outFile(out_dir + filename, std::ios::binary);
+  if (!outFile) {
+    std::cerr << "Error opening file " << filename << " for writing."
+              << std::endl;
+    return;
+  }
+
+  // only works when batch_num == 0
+  const std::vector<std::vector<half>> &det_bbox_0 = det_bbox[0];
+  const std::vector<half> &det_conf_0 = det_conf[0];
+  const std::vector<half> &det_cls_0 = det_cls[0];
+
+  for (int i=0; i<det_bbox_0.size(); ++i) {
+    // xyxy
+    for (const auto v: det_bbox_0[i]){
+      outFile << v << ",";
+    }
+    // conf
+    outFile << det_conf_0[i];
+    // cls
+    outFile << det_cls_0[i] << std::endl;
+  }
+  outFile.close();
+  return;
+}
+
 bool isAtImageEdge(std::vector<float> tlwh, int threshold, int image_height,
                    int image_width) {
   const float x0 = tlwh[0];
@@ -302,7 +333,8 @@ bool create_directory(const std::string &path) {
 }
 
 std::ofstream create_file_from_pts(const std::string &parent_dir,
-                         const std::string &fileName, unsigned long long pts) {
+                                   const std::string &fileName,
+                                   unsigned long long pts) {
   std::string base_dir = parent_dir + "/" + from_pts_to_dirName(pts);
   std::string base_path = base_dir + "/" + fileName;
 
@@ -337,7 +369,7 @@ std::ofstream create_file_from_pts(const std::string &parent_dir,
 }
 
 std::ofstream create_file_from_pts(const std::string &parent_dir,
-                         const std::string &fileName) {
+                                   const std::string &fileName) {
 
   // 获取当前时间
   std::time_t t = std::time(nullptr);
@@ -377,4 +409,67 @@ std::ofstream create_file_from_pts(const std::string &parent_dir,
     std::cerr << "Error: Exception occurred: " << e.what() << std::endl;
     return std::ofstream("create_wrong_file");
   }
+}
+
+std::ofstream create_file_from_pts(const std::string &parent_dir,
+                                   const std::string &fileName,
+                                   std::string &real_dir) {
+
+  // 获取当前时间
+  std::time_t t = std::time(nullptr);
+  char time_buffer[20];
+  std::strftime(time_buffer, sizeof(time_buffer), "%Y%m%d_%H%M%S",
+                std::localtime(&t));
+  std::string time_str(time_buffer);
+
+  std::string base_dir = parent_dir + "/" + time_str;
+  std::string base_path = base_dir + "/" + fileName;
+
+  try {
+    if (directory_exists(base_dir)) {
+      // results.csv exists
+      int N = 1;
+      while (true) {
+        std::string new_dir = base_dir + "_" + std::to_string(N);
+        if (!directory_exists(new_dir)) {
+          // rename current_dir to current_dir_N
+          if (std::rename(base_dir.c_str(), new_dir.c_str()) != 0) {
+            std::cerr << "Error: Could not rename " << base_dir << " to "
+                      << new_dir << std::endl;
+            return std::ofstream("create_wrong_file");
+          }
+          break;
+        }
+        N++;
+      }
+    }
+
+    // Create a base_dir and file .
+    create_directory(base_dir);
+    real_dir = base_dir + "/";
+
+    std::ofstream ofs(base_path.c_str());
+    return ofs;
+  } catch (const std::exception &e) {
+    std::cerr << "Error: Exception occurred: " << e.what() << std::endl;
+    return std::ofstream("create_wrong_file");
+  }
+}
+
+std::string getCurrentTimeWithMilliseconds() {
+    // 获取当前时间点
+    auto now = std::chrono::system_clock::now();
+    
+    // 转换为 time_t 类型
+    auto timeT = std::chrono::system_clock::to_time_t(now);
+    
+    // 转换为毫秒精度
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+    
+    // 格式化日期和时间
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&timeT), "%Y%m%d_%H%M%S") << '_' 
+       << std::setw(3) << std::setfill('0') << ms.count();  // 输出毫秒，确保三位数字
+
+    return ss.str();
 }

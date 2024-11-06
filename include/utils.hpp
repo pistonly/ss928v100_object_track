@@ -16,6 +16,9 @@
 #include <string>
 #include <sys/stat.h>
 #include <vector>
+#include <half.hpp>
+
+using half_float::half;
 
 // 定义日志级别
 enum LogLevel { DEBUG, INFO, WARNING, ERROR };
@@ -243,4 +246,16 @@ std::ofstream create_file_from_pts(const std::string &parent_dir,
 std::ofstream create_file_from_pts(const std::string &parent_dir,
                                    const std::string &fileName,
                                    unsigned long long pts);
+
+std::ofstream create_file_from_pts(const std::string &parent_dir,
+                                   const std::string &fileName,
+                                   std::string &real_dir);
+
+void save_detect_results_csv(
+    const std::vector<std::vector<std::vector<half>>> det_bbox,
+    const std::vector<std::vector<half>> det_conf,
+    const std::vector<std::vector<half>> det_cls, const std::string &out_dir,
+    const std::string &filename);
+
+std::string getCurrentTimeWithMilliseconds();
 #endif

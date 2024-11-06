@@ -308,7 +308,7 @@ int main(int argc, char *argv[]) {
   signal(SIGINT, signal_handler); // Capture Ctrl+C
 
   // Save results
-  std::ofstream real_result_f = create_file_from_pts(output_dir, "results.csv");
+  std::ofstream real_result_f = create_file_from_pts(output_dir, "results.csv", output_dir);
   if (!real_result_f) {
     logger.log(ERROR, "opening file for writing: ", output_dir + "results.csv");
   } else {
@@ -347,6 +347,10 @@ int main(int argc, char *argv[]) {
                                using_kal_filter, selected_det_ids,
                                max_tracker_num);
           last_yolov8_time = now;
+          // save yolov8 results
+          std::string det_file_name = getCurrentTimeWithMilliseconds() + "_" + std::to_string(det_bbox[0].size()) + ".csv";
+          save_detect_results_csv(det_bbox, det_conf, det_cls, output_dir, det_file_name);
+
         }
 
         // Use Kalman filter if enabled
