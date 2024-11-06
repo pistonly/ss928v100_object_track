@@ -32,10 +32,9 @@ Logger logger(INFO);
 //     {100, {0x37}}};
 
 static std::map<int, std::vector<int>> camera_id_map = {
-    {11, {1, 2}}, {12, {3, 4}}, {13, {5, 6}},
-    {21, {7, 8}}, {22, {9, 10}}, {23, {11, 12}},
-    {31, {13, 14}}, {32, {15, 16}}, {33, {17, 18}},
-    {100, {19}}};
+    {11, {1, 2}},   {12, {3, 4}},   {13, {5, 6}},   {21, {7, 8}},
+    {22, {9, 10}},  {23, {11, 12}}, {31, {13, 14}}, {32, {15, 16}},
+    {33, {17, 18}}, {100, {19}}};
 
 void copy_yuv420_from_frame(char *yuv420, ot_video_frame_info *frame) {
   td_u32 height = frame->video_frame.height;
@@ -264,9 +263,9 @@ void save_detect_results_csv(
   const std::vector<half> &det_conf_0 = det_conf[0];
   const std::vector<half> &det_cls_0 = det_cls[0];
 
-  for (int i=0; i<det_bbox_0.size(); ++i) {
+  for (int i = 0; i < det_bbox_0.size(); ++i) {
     // xyxy
-    for (const auto v: det_bbox_0[i]){
+    for (const auto v : det_bbox_0[i]) {
       outFile << v << ",";
     }
     // conf
@@ -336,7 +335,7 @@ std::string from_pts_to_strWithMilliseconds(unsigned long long framePts) {
       << std::setw(2) << std::setfill('0') << (ptm->tm_mon + 1) // 月份，两位
       << std::setw(2) << std::setfill('0') << ptm->tm_mday // 日期，两位
       << "_" << std::setw(2) << std::setfill('0') << ptm->tm_hour // 小时，两位
-      << std::setw(2) << std::setfill('0') << ptm->tm_min  // 分钟，两位
+      << std::setw(2) << std::setfill('0') << ptm->tm_min // 分钟，两位
       << std::setw(2) << std::setfill('0') << ptm->tm_sec // 秒数，两位
       << std::setw(3) << std::setfill('0') << framePts % 1000; // ms, 3
   return oss.str();
@@ -483,19 +482,61 @@ std::ofstream create_file_from_pts(const std::string &parent_dir,
 }
 
 std::string getCurrentTimeWithMilliseconds() {
-    // 获取当前时间点
-    auto now = std::chrono::system_clock::now();
-    
-    // 转换为 time_t 类型
-    auto timeT = std::chrono::system_clock::to_time_t(now);
-    
-    // 转换为毫秒精度
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
-    
-    // 格式化日期和时间
-    std::stringstream ss;
-    ss << std::put_time(std::localtime(&timeT), "%Y%m%d_%H%M%S") << '_' 
-       << std::setw(3) << std::setfill('0') << ms.count();  // 输出毫秒，确保三位数字
+  // 获取当前时间点
+  auto now = std::chrono::system_clock::now();
 
-    return ss.str();
+  // 转换为 time_t 类型
+  auto timeT = std::chrono::system_clock::to_time_t(now);
+
+  // 转换为毫秒精度
+  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                now.time_since_epoch()) %
+            1000;
+
+  // 格式化日期和时间
+  std::stringstream ss;
+  ss << std::put_time(std::localtime(&timeT), "%Y%m%d_%H%M%S") << '_'
+     << std::setw(3) << std::setfill('0')
+     << ms.count(); // 输出毫秒，确保三位数字
+
+  return ss.str();
+}
+
+int64_t getCurrentTimestampInMicroseconds() {
+  // 获取当前时间点
+  auto now = std::chrono::system_clock::now();
+
+  // 将时间点转换为微秒为单位的时间戳
+  auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(
+                          now.time_since_epoch())
+                          .count();
+
+  return microseconds;
+}
+
+td_s32 sync_to_system_time() {
+  return ss_mpi_sys_init_pts_base(getCurrentTimestampInMicroseconds());
+}
+
+int64_t get_midnight_timestamp_microseconds() {
+  // 获取当前时间点
+  auto now = std::chrono::system_clock::now();
+
+  // 将时间转换为time_t类型
+  std::time_t now_t = std::chrono::system_clock::to_time_t(now);
+
+  // 转换为本地时间，并设置时间为当天零点
+  std::tm *midnight_tm = std::localtime(&now_t);
+  midnight_tm->tm_hour = 0;
+  midnight_tm->tm_min = 0;
+  midnight_tm->tm_sec = 0;
+
+  // 将零点的tm结构转换回time_point
+  auto midnight =
+      std::chrono::system_clock::from_time_t(std::mktime(midnight_tm));
+
+  // 获取午夜时间点的时间戳（以微秒为单位）
+  return std::chrono::duration_cast<std::chrono::microseconds>(
+             midnight.time_since_epoch())
+      .count();
 }

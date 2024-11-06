@@ -5,8 +5,11 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include "sample_comm.h"
+#include "ss_mpi_sys.h"
 #include "ot_common_video.h"
 #include <fstream>
+#include <half.hpp>
 #include <iostream>
 #include <mutex>
 #include <queue>
@@ -16,7 +19,6 @@
 #include <string>
 #include <sys/stat.h>
 #include <vector>
-#include <half.hpp>
 
 using half_float::half;
 
@@ -260,4 +262,48 @@ void save_detect_results_csv(
 std::string getCurrentTimeWithMilliseconds();
 std::string from_pts_to_strWithMilliseconds(unsigned long long framePts);
 
+td_s32 sync_to_system_time();
+
+int64_t get_midnight_timestamp_microseconds();
+
+class TimeSynchronizer {
+public:
+  // 构造函数，接收间隔时间参数
+  TimeSynchronizer(int64_t delta_time)
+      : delta_time_(delta_time),
+        last_sync_time_(getCurrentTimestampInMicroseconds()) {}
+
+  // 同步到系统时间的函数
+  void sync() {
+    int64_t current_time = getCurrentTimestampInMicroseconds();
+    // 计算与上次同步的时间差
+    if ((current_time - last_sync_time_) >= delta_time_) {
+      // 调用同步函数
+      if (sync_to_system_time() == 0) {
+        // 更新最后同步时间
+        last_sync_time_ = current_time;
+      } else {
+        std::cout << "Time synchronization failed." << std::endl;
+      }
+    }
+  }
+
+private:
+  // 获取当前时间戳（微秒）
+  int64_t getCurrentTimestampInMicroseconds() {
+    auto now = std::chrono::system_clock::now();
+    auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(
+                            now.time_since_epoch())
+                            .count();
+    return microseconds;
+  }
+
+  // 设置多媒体系统时间与操作系统时间同步
+  td_s32 sync_to_system_time() {
+    return ss_mpi_sys_init_pts_base(getCurrentTimestampInMicroseconds());
+  }
+
+  int64_t delta_time_;     // 间隔时间（微秒）
+  int64_t last_sync_time_; // 上次同步时间
+};
 #endif

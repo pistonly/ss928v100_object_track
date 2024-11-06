@@ -376,7 +376,14 @@ int main(int argc, char *argv[]) {
     real_result_f << "cameraId,timestamp,trackerId,l,t,w,h" << std::endl;
   }
 
+  sync_to_system_time();
+  // sync mpi time to system time
+  TimeSynchronizer sync_time(5000000);
+  sync_time.sync();
+
   while (running) {
+    sync_time.sync();
+
     for (int current_ch = 0; current_ch < v_cameraIds.size(); ++current_ch) {
       Timer timer("process one frame of chn-" + std::to_string(current_ch));
       // process channel current_ch
