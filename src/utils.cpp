@@ -398,6 +398,11 @@ std::ofstream create_file_from_pts(const std::string &parent_dir,
 
   // 获取当前时间
   std::time_t t = std::time(nullptr);
+
+  const int timezone_offset_seconds = 8 * 3600;  // UTC+8
+  // 调整后的时间
+  t += timezone_offset_seconds;
+
   char time_buffer[20];
   std::strftime(time_buffer, sizeof(time_buffer), "%Y%m%d_%H%M%S",
                 std::localtime(&t));
@@ -442,6 +447,10 @@ std::ofstream create_file_from_pts(const std::string &parent_dir,
 
   // 获取当前时间
   std::time_t t = std::time(nullptr);
+  const int timezone_offset_seconds = 8 * 3600; // UTC+8
+  // 调整后的时间
+  t += timezone_offset_seconds;
+
   char time_buffer[20];
   std::strftime(time_buffer, sizeof(time_buffer), "%Y%m%d_%H%M%S",
                 std::localtime(&t));
