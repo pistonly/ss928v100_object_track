@@ -142,6 +142,8 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
   }
 
   if (b_tcp_send) {
+    // send fake data for visualization
+    track_res.push_back({0.f, 0.f, 0.f, 0.f, -1.f, 0.f});
     if (!tcp_obj.mb_sock_connected && tcp_obj.mb_tcpIp_setted) {
       tcp_obj.connect_to_tcp();
     }
@@ -377,9 +379,15 @@ int main(int argc, char *argv[]) {
   }
 
   sync_to_system_time();
-  // sync mpi time to system time
+  // sync mpi time to system time, every 5s
   TimeSynchronizer sync_time(5000000);
   sync_time.sync();
+
+  // sleep for next yolov8_time_interval
+  int64_t _now = getCurrentTimestampInMicroseconds();
+  int64_t start_pts = (_now / yolov8_time_interval + 1) * yolov8_time_interval;
+  std::this_thread::sleep_for(std::chrono::microseconds(start_pts - _now));
+  std::vector<int> v_last_multiple(v_frame_chs.size(), -1);
 
   while (running) {
     sync_time.sync();
@@ -400,9 +408,11 @@ int main(int argc, char *argv[]) {
       auto &trackers = v_trackers[current_ch];
       auto &last_yolo_ts = v_last_yolo_ts[current_ch];
 
-      if (trackers.size() < max_tracker_num &&
-          (v_frame_chs[current_ch].video_frame.pts - last_yolo_ts) >
-              yolov8_time_interval) {
+      // run yolo at time_point which multiple of yolov8_time_interval
+      _now = v_frame_chs[current_ch].video_frame.pts;
+      int current_multiple = (_now - start_pts) / yolov8_time_interval;
+      if (current_multiple > v_last_multiple[current_ch]) {
+        v_last_multiple[current_ch] = current_multiple;
         Timer timer("yolov8 processing ...");
         yolov8.process_one_image(img, det_bbox, det_conf, det_cls);
         logger.log(DEBUG, "add tracks ...");
@@ -410,11 +420,12 @@ int main(int argc, char *argv[]) {
                              using_kal_filter, selected_det_ids,
                              max_tracker_num);
         last_yolo_ts = v_frame_chs[current_ch].video_frame.pts;
-        // save yolov8 results
+        // save yolov8 results: timestamp_cameraId_detectNum.csv
         std::string det_file_name =
             from_pts_to_strWithMilliseconds(
                 v_frame_chs[current_ch].video_frame.pts / 1000) +
-            "_" + std::to_string(det_bbox[0].size()) + ".csv";
+            "_" + std::to_string(static_cast<int>(current_cameraId)) + "_" +
+            std::to_string(det_bbox[0].size()) + ".csv";
         save_detect_results_csv(det_bbox, det_conf, det_cls, output_dir,
                                 det_file_name);
       }

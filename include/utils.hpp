@@ -5,9 +5,9 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include "ot_common_video.h"
 #include "sample_comm.h"
 #include "ss_mpi_sys.h"
-#include "ot_common_video.h"
 #include <fstream>
 #include <half.hpp>
 #include <iostream>
@@ -260,6 +260,7 @@ void save_detect_results_csv(
     const std::string &filename);
 
 std::string getCurrentTimeWithMilliseconds();
+int64_t getCurrentTimestampInMicroseconds();
 std::string from_pts_to_strWithMilliseconds(unsigned long long framePts);
 
 td_s32 sync_to_system_time();

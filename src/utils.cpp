@@ -337,7 +337,7 @@ std::string from_pts_to_strWithMilliseconds(unsigned long long framePts) {
       << "_" << std::setw(2) << std::setfill('0') << ptm->tm_hour // 小时，两位
       << std::setw(2) << std::setfill('0') << ptm->tm_min // 分钟，两位
       << std::setw(2) << std::setfill('0') << ptm->tm_sec // 秒数，两位
-      << std::setw(3) << std::setfill('0') << framePts % 1000; // ms, 3
+      << "_" << std::setw(3) << std::setfill('0') << framePts % 1000; // ms, 3
   return oss.str();
 }
 
