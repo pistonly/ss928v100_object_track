@@ -1,7 +1,10 @@
 #include "tcp_tools.hpp"
 #include "utils.hpp"
+#include <chrono>
 
 extern Logger logger;
+
+static auto lastTime = std::chrono::steady_clock::now();
 
 TCP::~TCP() {
   if (mb_sock_connected) {
@@ -26,10 +29,27 @@ void TCP::set_ip_port(const std::string &ip, const int port) {
 }
 
 void TCP::connect_to_tcp() {
+
+  if (mb_sock_connected) {
+    logger.log(INFO, "Already connected.");
+    return;
+  }
+
+  auto now = std::chrono::steady_clock::now();
+  if (std::chrono::duration_cast<std::chrono::seconds>(now - last_attempt_time)
+          .count() < 2) {
+    logger.log(WARNING, "Last connection attempt was less than 2 seconds ago. "
+                        "Skipping connection attempt.");
+    return;
+  }
+
+  last_attempt_time = now;
+
   struct sockaddr_in serv_addr;
+  memset(&serv_addr, 0, sizeof(serv_addr)); // 初始化结构体
 
   if ((m_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-    logger.log(ERROR, "Socket creation failed.");
+    logger.log(ERROR, "Socket creation failed: ", strerror(errno));
     return;
   }
 
@@ -37,25 +57,43 @@ void TCP::connect_to_tcp() {
   serv_addr.sin_port = htons(m_tcpPort);
 
   if (inet_pton(AF_INET, m_tcpIp.c_str(), &serv_addr.sin_addr) <= 0) {
-    logger.log(ERROR, "Invalid address / Address not supported.");
+    logger.log(ERROR, "Invalid address / Address not supported: ", m_tcpIp);
+    close(m_sock); // 关闭套接字
     return;
   }
 
   if (connect(m_sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-    logger.log(ERROR, "Connection Failed.");
+    logger.log(ERROR, "Connection Failed: ", strerror(errno));
+    close(m_sock); // 关闭套接字
     return;
   }
 
   mb_sock_connected = true;
   logger.log(INFO, "Connected to TCP server at ", m_tcpIp, ":", m_tcpPort);
-  return;
 }
 
 void TCP::connect_to_tcp(const std::string &ip, const int port) {
+
+  if (mb_sock_connected) {
+    logger.log(INFO, "Already connected.");
+    return;
+  }
+
+  auto now = std::chrono::steady_clock::now();
+  if (std::chrono::duration_cast<std::chrono::seconds>(now - last_attempt_time)
+          .count() < 2) {
+    logger.log(WARNING, "Last connection attempt was less than 2 seconds ago. "
+                        "Skipping connection attempt.");
+    return;
+  }
+
+  last_attempt_time = now;
+
   struct sockaddr_in serv_addr;
+  memset(&serv_addr, 0, sizeof(serv_addr)); // 初始化结构体
 
   if ((m_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-    logger.log(ERROR, "Socket creation failed.");
+    logger.log(ERROR, "Socket creation failed: ", strerror(errno));
     return;
   }
 
@@ -63,18 +101,19 @@ void TCP::connect_to_tcp(const std::string &ip, const int port) {
   serv_addr.sin_port = htons(port);
 
   if (inet_pton(AF_INET, ip.c_str(), &serv_addr.sin_addr) <= 0) {
-    logger.log(ERROR, "Invalid address / Address not supported.");
+    logger.log(ERROR, "Invalid address / Address not supported: ", ip);
+    close(m_sock); // 关闭套接字
     return;
   }
 
   if (connect(m_sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-    logger.log(ERROR, "Connection Failed.");
+    logger.log(ERROR, "Connection Failed: ", strerror(errno));
+    close(m_sock); // 关闭套接字
     return;
   }
 
   mb_sock_connected = true;
   logger.log(INFO, "Connected to TCP server at ", ip, ":", port);
-  return;
 }
 
 ssize_t TCP::tcp_send(const std::vector<char> &data) {

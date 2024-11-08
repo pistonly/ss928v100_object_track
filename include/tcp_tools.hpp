@@ -2,6 +2,7 @@
 #define TCP_TOOLS_HPP
 
 #include <arpa/inet.h>
+#include <chrono>
 #include <csignal> // Include this header for signal handling
 #include <netinet/in.h>
 #include <string>
@@ -9,7 +10,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <vector>
-
 
 class TCP {
 public:
@@ -30,5 +30,8 @@ public:
   void connect_to_tcp(const std::string &ip, const int port);
 
   ssize_t tcp_send(const std::vector<char> &data);
+
+private:
+  std::chrono::steady_clock::time_point last_attempt_time;
 };
 #endif
