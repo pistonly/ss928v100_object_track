@@ -14,6 +14,8 @@
 #include <ost_utils.hpp>
 #include <string>
 #include <vector>
+#include <sys/types.h>
+
 
 using half_float::half;
 using json = nlohmann::json;
@@ -148,7 +150,7 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
       tcp_obj.connect_to_tcp();
     }
     if (tcp_obj.mb_sock_connected) {
-      send_track_result(tcp_obj.m_sock, track_res, cameraId, timestamp);
+      send_track_result(tcp_obj, track_res, cameraId, timestamp);
     }
   }
 }

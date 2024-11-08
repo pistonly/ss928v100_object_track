@@ -65,7 +65,7 @@ set(SYSTEM_LIBS pthread m dl stdc++)
 
 add_library(hardware_decode STATIC src/ffmpeg_vdec_vpss.cpp)
 
-FILE(GLOB UTILS_SRC ./src/utils.cpp)
+FILE(GLOB UTILS_SRC ./src/utils.cpp ./src/tcp_tools.cpp)
 FILE(GLOB OST_SRC ./src/nnn_ostrack_callback.cpp)
 
 

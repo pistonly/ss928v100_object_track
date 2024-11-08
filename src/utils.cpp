@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <vector>
+#include "tcp_tools.hpp"
 
 #include <sys/stat.h>
 
@@ -231,6 +232,14 @@ void send_track_result(int sock,
   std::vector<char> serialized_data =
       serialize_track_results(tracker_res, cameraId, ts);
   send(sock, serialized_data.data(), serialized_data.size(), 0);
+}
+
+void send_track_result(TCP &tcp_obj,
+                       const std::vector<std::vector<float>> &tracker_res,
+                       uint8_t cameraId, uint64_t ts) {
+  std::vector<char> serialized_data =
+      serialize_track_results(tracker_res, cameraId, ts);
+  tcp_obj.tcp_send(serialized_data);
 }
 
 void save_one_track_result_csv(

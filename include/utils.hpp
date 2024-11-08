@@ -5,6 +5,7 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include "tcp_tools.hpp"
 #include "ot_common_video.h"
 #include "sample_comm.h"
 #include "ss_mpi_sys.h"
@@ -238,6 +239,11 @@ void getCameraId_pair(std::vector<uint8_t> &cameraIds);
 void send_track_result(int sock,
                        const std::vector<std::vector<float>> &tracker_res,
                        uint8_t cameraId, uint64_t ts);
+
+void send_track_result(TCP &tcp_obj,
+                       const std::vector<std::vector<float>> &tracker_res,
+                       uint8_t cameraId, uint64_t ts);
+
 void save_one_track_result_csv(
     std::ofstream &outFile, const std::vector<std::vector<float>> &tracker_res,
     uint8_t cameraId, uint64_t ts);
