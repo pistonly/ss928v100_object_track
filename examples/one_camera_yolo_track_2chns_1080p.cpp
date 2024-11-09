@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 #include <sys/types.h>
+#include <ctime>
 
 
 using half_float::half;
@@ -31,6 +32,19 @@ void signal_handler(int signum) { running = false; }
 int track_id = 0;
 
 static TCP tcp_obj;
+
+bool isCurrentYear2024() {
+  // 获取当前时间点
+  auto now = std::chrono::system_clock::now();
+  // 将时间点转换为 time_t 类型
+  std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+  // 转换为本地时间结构
+  std::tm *localTime = std::localtime(&now_c);
+  // 提取年份，tm_year 是从 1900 年开始计数的年份
+  int year = localTime->tm_year + 1900;
+  // 检查年份是否为 2024
+  return (year == 2024);
+}
 
 // 提取通用的错误处理函数
 bool handle_error(const char *action, int vpss_grp, int vpss_chn, int ret) {
@@ -279,6 +293,17 @@ int main(int argc, char *argv[]) {
   if (!config_file.is_open()) {
     logger.log(ERROR, "Can't open configure file: ", configure_path);
     return 1;
+  }
+
+  // check time
+  logger.log(INFO, "checking is current year 2024");
+  while (true) {
+    if (isCurrentYear2024()) {
+      break;
+    } else {
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      logger.log(INFO, "checking is current year 2024");
+    }
   }
 
   json config_data;
