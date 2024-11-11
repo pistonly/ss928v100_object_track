@@ -57,12 +57,7 @@ if __name__ == '__main__':
         # # 文件复制
         commands = [
             #           'nohup rm -rf /mnt/data/yolo/result_text/ &',
-            #'umount /mnt/data/horizon_nfs',
-            #'rm -rf /root/horizon_nfs',
-            #'rm -rf /mnt/data/horizon_nfs/*',
-            'mount -t nfs -o nolock 192.168.0.77:/e/nfs_share /mnt/nfs',
-            'mkdir -p /mnt/data/one_camera_track/data && rm /mnt/data/one_camera_track/data/*',
-            'cp /mnt/nfs/one_camera_track/data/* /mnt/data/one_camera_track/data/ ',
+            'mount -t nfs -o nolock 192.168.0.77:/e/nfs_share /mnt/nfs; mkdir -p /mnt/data/one_camera_track/data && cp /mnt/nfs/one_camera_track/data/* /mnt/data/one_camera_track/data/ ',
 
         ]
         do_telnet(tn, finish, commands)

@@ -50,18 +50,10 @@ if __name__ == '__main__':
 
         tn = link_ss928(Host + ss928_ip[i], username, password, finish)
 
-        # # 启动项写入
-        #commands = ['vi /etc/init.d/S81app','G','o', 'cd /mnt/data/yolo/', 'sh run_task.sh &', chr(27), ':wq']
-        #do_telnet(tn, finish, commands)
-
         # # 文件复制
         commands = [
-            #           'nohup rm -rf /mnt/data/yolo/result_text/ &',
-            #'umount /mnt/data/horizon_nfs',
-            #'rm -rf /root/horizon_nfs',
-            #'rm -rf /mnt/data/horizon_nfs/*',
-            'pkill one_camera_yolo_track_2chns_1080p',
-            'cd /mnt/data/ && sh ./run_task.sh &'
+            #  'nohup rm -rf /mnt/data/yolo/result_text/ &',
+            'pkill one_camera_yolo_track_2chns_1080p; cd /mnt/data/ && sh ./run_task.sh &'
 
         ]
         do_telnet(tn, finish, commands)

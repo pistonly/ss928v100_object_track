@@ -56,10 +56,8 @@ if __name__ == '__main__':
 
         # # 文件复制
         commands = [
-            # 'nohup rm -rf /mnt/data/yolo/result_text/ &',
-            'mount -t nfs -o nolock 192.168.0.77:/e/nfs_share /mnt/nfs',
-            'mkdir -p /mnt/data/sot && mkdir -p /mnt/data/one_camera_track && rm -r /mnt/data/one_camera_track/*',
-            'nohup cp -r /mnt/nfs/one_camera_track/* /mnt/data/one_camera_track/ && cp /mnt/data/one_camera_track/run_track_task.sh /mnt/data/ && chmod +x /mnt/data/run_track_task.sh && cp /mnt/data/one_camera_track/profile /root/.profile &',
+            'mount -t nfs -o nolock 192.168.0.77:/e/nfs_share /mnt/nfs; mkdir -p /mnt/data/sot && mkdir -p /mnt/data/one_camera_track && rm -r /mnt/data/one_camera_track/*',
+            '''nohup sh -c "cp -r /mnt/nfs/one_camera_track/* /mnt/data/one_camera_track/ && cp /mnt/data/one_camera_track/run_track_task.sh /mnt/data/ && chmod +x /mnt/data/run_track_task.sh && cp /mnt/data/one_camera_track/profile /root/.profile && cp /mnt/data/run_track_task.sh /mnt/data/run_task.s" &''',
 
         ]
         do_telnet(tn, finish, commands)

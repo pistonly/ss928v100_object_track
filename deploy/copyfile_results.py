@@ -67,9 +67,8 @@ if __name__ == '__main__':
         # # 文件复制
         commands = [
             # kill && mount nfs
-            'pkill one_camera_yolo_track_2chns_1080p',
-            'mount -t nfs -o nolock 192.168.0.77:/e/nfs_share /mnt/nfs',
-            f'mkdir -p {target_dir_parent} && nohup cp -r /mnt/data/sot {target_dir} &&rm -r /mnt/data/sot && mkdir -p /mnt/data/sot && cp /mnt/data/track_log.log {target_dir}/ && rm /mnt/data/track_log.log &',
+            'pkill one_camera_yolo_track_2chns_1080p; mount -t nfs -o nolock 192.168.0.77:/e/nfs_share /mnt/nfs',
+            f'''mkdir -p {target_dir_parent} && nohup sh -c "cp -r /mnt/data/sot {target_dir} &&rm -r /mnt/data/sot && mkdir -p /mnt/data/sot && cp /mnt/data/track_log.log {target_dir}/ && rm /mnt/data/track_log.log" &'''
         ]
         do_telnet(tn, finish, commands)
 

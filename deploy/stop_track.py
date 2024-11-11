@@ -56,10 +56,6 @@ if __name__ == '__main__':
 
         # # 文件复制
         commands = [
-            #           'nohup rm -rf /mnt/data/yolo/result_text/ &',
-            #'umount /mnt/data/horizon_nfs',
-            #'rm -rf /root/horizon_nfs',
-            #'rm -rf /mnt/data/horizon_nfs/*',
             'pkill one_camera_yolo_track_2chns_1080p',
 
         ]
