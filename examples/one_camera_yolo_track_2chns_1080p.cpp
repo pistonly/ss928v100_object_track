@@ -8,15 +8,14 @@
 #include <atomic>
 #include <chrono>
 #include <csignal>
+#include <ctime>
 #include <fstream>
 #include <half.hpp>
 #include <nlohmann/json.hpp>
 #include <ost_utils.hpp>
 #include <string>
-#include <vector>
 #include <sys/types.h>
-#include <ctime>
-
+#include <vector>
 
 using half_float::half;
 using json = nlohmann::json;
@@ -29,7 +28,7 @@ extern Logger logger;
 
 std::atomic<bool> running(true);
 void signal_handler(int signum) { running = false; }
-int track_id = 0;
+int g_track_id = 0;
 
 static TCP tcp_obj;
 
@@ -277,11 +276,15 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
   int needed_track_num = track_max_num - tracks.size();
   int added_num = 0;
   for (const auto &tlwh_pair : to_be_added_dets_with_score) {
-    tracks.emplace(track_id++, STrack(tlwh_pair.second, using_kal_filter));
+    logger.log(DEBUG, "Add new tracker: ", g_track_id,
+               " tlwh: ", tlwh_pair.second[0], ", ", tlwh_pair.second[1], ", ",
+               tlwh_pair.second[2], ", ", tlwh_pair.second[3]);
+    tracks.emplace(g_track_id++, STrack(tlwh_pair.second, using_kal_filter));
     added_num++;
     if (added_num == needed_track_num)
       return;
   }
+  logger.log(INFO, "current tracker num: ", tracks.size());
 }
 
 int main(int argc, char *argv[]) {
@@ -299,7 +302,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // check time
+  // check time, wait for ntp time sync
   logger.log(INFO, "checking is current year 2024");
   while (true) {
     if (isCurrentYear2024()) {
@@ -314,7 +317,6 @@ int main(int argc, char *argv[]) {
   // sync mpi time to system time, every 5s
   TimeSynchronizer sync_time(5000000);
   sync_time.sync();
-
 
   json config_data;
   try {
@@ -412,9 +414,9 @@ int main(int argc, char *argv[]) {
   if (!real_result_f) {
     logger.log(ERROR, "opening file for writing: ", output_dir + "results.csv");
   } else {
-    real_result_f << "cameraId,timestamp,x0,y0,x1,y1,conf,trackerId" << std::endl;
+    real_result_f << "cameraId,timestamp,x0,y0,x1,y1,conf,trackerId"
+                  << std::endl;
   }
-
 
   // sleep for next yolov8_time_interval
   int64_t _now = getCurrentTimestampInMicroseconds();
