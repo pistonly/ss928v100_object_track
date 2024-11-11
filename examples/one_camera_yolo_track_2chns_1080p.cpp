@@ -254,10 +254,14 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
 
   // remove tracker who is not in detections
   for (auto it = tracks.begin(); it != tracks.end();) {
-    if (track_ious[it->first] < delete_iou_thres) {
+    const auto tId = it->first;
+    const auto iou = track_ious[tId];
+    if (iou < delete_iou_thres) {
       it = tracks.erase(it);
+      logger.log(DEBUG, "Delete tracker: ", tId, " iou: ", iou);
     } else {
       ++it;
+      logger.log(DEBUG, "Confirm tracker: ", tId, " iou: ", iou);
     }
   }
 
@@ -408,7 +412,7 @@ int main(int argc, char *argv[]) {
   if (!real_result_f) {
     logger.log(ERROR, "opening file for writing: ", output_dir + "results.csv");
   } else {
-    real_result_f << "cameraId,timestamp,trackerId,l,t,w,h" << std::endl;
+    real_result_f << "cameraId,timestamp,x0,y0,x1,y1,conf,trackerId" << std::endl;
   }
 
 
