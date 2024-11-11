@@ -1,0 +1,12 @@
+
+[Unit]
+Description=UDP Startup Script
+After=network.target  # 这表示该脚本在网络服务启动后运行
+
+[Service]
+ExecStart=/home/sunrise/UDP_Sender/autorun.sh  # 替换为你的脚本路径
+Restart=always  # 可选，若脚本意外退出则自动重启
+
+[Install]
+WantedBy=multi-user.target
+
