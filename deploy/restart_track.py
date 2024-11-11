@@ -2,6 +2,7 @@ import telnetlib
 import time
 import json
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 
 
 def do_telnet(tn, finish, commands):
@@ -16,18 +17,22 @@ def do_telnet(tn, finish, commands):
 
 
 def link_ss928(Host, username, password, finish):
-    tn = telnetlib.Telnet(Host, port=23, timeout=10)
-    tn.set_debuglevel(2)
+    try:
+        tn = telnetlib.Telnet(Host, port=23, timeout=10)
+        tn.set_debuglevel(2)
 
-    tn.read_until(b'localhost login: ')
-    tn.write(username.encode('ascii') + b'\n')
+        tn.read_until(b'localhost login: ')
+        tn.write(username.encode('ascii') + b'\n')
 
-    tn.read_until(b'Password: ')
-    tn.write(password.encode('ascii') + b'\n')
+        tn.read_until(b'Password: ')
+        tn.write(password.encode('ascii') + b'\n')
 
-    tn.read_until(finish.encode('ascii'))
+        tn.read_until(finish.encode('ascii'))
 
-    return tn
+        return tn
+    except Exception as e:
+        print(f"failed to connect {Host}: {e}")
+        return None
 
 
 if __name__ == '__main__':
@@ -46,16 +51,21 @@ if __name__ == '__main__':
     password = ''
     finish = '~ #'
 
-    for i in range(len(ss928_ip)):
+    commands = [
+        'pkill one_camera_yolo_track_2chns_1080p; cd /mnt/data/ && sh ./run_task.sh &'
+    ]
 
-        tn = link_ss928(Host + ss928_ip[i], username, password, finish)
+    def execute_on_device(ip):
+        tn = link_ss928(Host + ip, username, password, finish)
+        if tn:
+            do_telnet(tn, finish, commands)
+            tn.close()
 
-        # # 文件复制
-        commands = [
-            #  'nohup rm -rf /mnt/data/yolo/result_text/ &',
-            'pkill one_camera_yolo_track_2chns_1080p; cd /mnt/data/ && sh ./run_task.sh &'
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        executor.map(execute_on_device, ss928_ip)
 
-        ]
-        do_telnet(tn, finish, commands)
 
-        tn.close()
+
+
+
+

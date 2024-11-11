@@ -2,6 +2,7 @@ import telnetlib
 import time
 import json
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 
 
 def do_telnet(tn, finish, commands):
@@ -16,18 +17,22 @@ def do_telnet(tn, finish, commands):
 
 
 def link_ss928(Host, username, password, finish):
-    tn = telnetlib.Telnet(Host, port=23, timeout=10)
-    tn.set_debuglevel(2)
+    try:
+        tn = telnetlib.Telnet(Host, port=23, timeout=10)
+        tn.set_debuglevel(2)
 
-    tn.read_until(b'localhost login: ')
-    tn.write(username.encode('ascii') + b'\n')
+        tn.read_until(b'localhost login: ')
+        tn.write(username.encode('ascii') + b'\n')
 
-    tn.read_until(b'Password: ')
-    tn.write(password.encode('ascii') + b'\n')
+        tn.read_until(b'Password: ')
+        tn.write(password.encode('ascii') + b'\n')
 
-    tn.read_until(finish.encode('ascii'))
+        tn.read_until(finish.encode('ascii'))
 
-    return tn
+        return tn
+    except Exception as e:
+        print(f"failed to connect {Host}: {e}")
+        return None
 
 
 if __name__ == '__main__':
@@ -46,20 +51,20 @@ if __name__ == '__main__':
     password = ''
     finish = '~ #'
 
-    for i in range(len(ss928_ip)):
-
-        tn = link_ss928(Host + ss928_ip[i], username, password, finish)
-
-        # # 启动项写入
-        #commands = ['vi /etc/init.d/S81app','G','o', 'cd /mnt/data/yolo/', 'sh run_task.sh &', chr(27), ':wq']
-        #do_telnet(tn, finish, commands)
-
-        # # 文件复制
-        commands = [
-            #           'nohup rm -rf /mnt/data/yolo/result_text/ &',
-            'mount -t nfs -o nolock 192.168.0.77:/e/nfs_share /mnt/nfs; mkdir -p /mnt/data/one_camera_track/data && cp /mnt/nfs/one_camera_track/data/* /mnt/data/one_camera_track/data/ ',
-
+    commands = [
+        'mount -t nfs -o nolock 192.168.0.77:/e/nfs_share /mnt/nfs; mkdir -p /mnt/data/one_camera_track/data && cp /mnt/nfs/one_camera_track/data/* /mnt/data/one_camera_track/data/ ',
         ]
-        do_telnet(tn, finish, commands)
 
-        tn.close()
+    def execute_on_device(ip):
+        tn = link_ss928(Host + ip, username, password, finish)
+        if tn:
+            do_telnet(tn, finish, commands)
+            tn.close()
+
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        executor.map(execute_on_device, ss928_ip)
+
+
+
+
+

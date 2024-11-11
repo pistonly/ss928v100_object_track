@@ -2,7 +2,7 @@ import telnetlib
 import time
 import json
 import argparse
-import datetime
+from concurrent.futures import ThreadPoolExecutor
 
 
 def do_telnet(tn, finish, commands):
@@ -17,18 +17,22 @@ def do_telnet(tn, finish, commands):
 
 
 def link_ss928(Host, username, password, finish):
-    tn = telnetlib.Telnet(Host, port=23, timeout=10)
-    tn.set_debuglevel(2)
+    try:
+        tn = telnetlib.Telnet(Host, port=23, timeout=10)
+        tn.set_debuglevel(2)
 
-    tn.read_until(b'localhost login: ')
-    tn.write(username.encode('ascii') + b'\n')
+        tn.read_until(b'localhost login: ')
+        tn.write(username.encode('ascii') + b'\n')
 
-    tn.read_until(b'Password: ')
-    tn.write(password.encode('ascii') + b'\n')
+        tn.read_until(b'Password: ')
+        tn.write(password.encode('ascii') + b'\n')
 
-    tn.read_until(finish.encode('ascii'))
+        tn.read_until(finish.encode('ascii'))
 
-    return tn
+        return tn
+    except Exception as e:
+        print(f"failed to connect {Host}: {e}")
+        return None
 
 
 if __name__ == '__main__':
@@ -47,29 +51,19 @@ if __name__ == '__main__':
     password = ''
     finish = '~ #'
 
-
-    # 获取当前时间
-    now = datetime.datetime.now()
-    # 格式化时间为可读形式
-    now_str = now.strftime('%Y%m%d_%H%M%S')
-
-
-    for i in range(len(ss928_ip)):
-
-        tn = link_ss928(Host + ss928_ip[i], username, password, finish)
-
-        # # 启动项写入
-        #commands = ['vi /etc/init.d/S81app','G','o', 'cd /mnt/data/yolo/', 'sh run_task.sh &', chr(27), ':wq']
-        #do_telnet(tn, finish, commands)
-
-        target_dir_parent = f"/mnt/nfs/sot_results/{now_str}"
-        target_dir = f"{target_dir_parent}/{ss928_ip[i]}"
-        # # 文件复制
-        commands = [
-            # kill && mount nfs
+    commands = [
+        # kill && mount nfs
             'pkill one_camera_yolo_track_2chns_1080p; mount -t nfs -o nolock 192.168.0.77:/e/nfs_share /mnt/nfs',
-            f'''mkdir -p {target_dir_parent} && nohup sh -c "cp -r /mnt/data/sot {target_dir} &&rm -r /mnt/data/sot && mkdir -p /mnt/data/sot && cp /mnt/data/track_log.log {target_dir}/ && rm /mnt/data/track_log.log" &'''
-        ]
-        do_telnet(tn, finish, commands)
+        f'''mkdir -p {target_dir_parent} && nohup sh -c "cp -r /mnt/data/sot {target_dir} &&rm -r /mnt/data/sot && mkdir -p /mnt/data/sot && cp /mnt/data/track_log.log {target_dir}/ && rm /mnt/data/track_log.log" &'''
+    ]
 
-        tn.close()
+    def execute_on_device(ip):
+        tn = link_ss928(Host + ip, username, password, finish)
+        if tn:
+            do_telnet(tn, finish, commands)
+            tn.close()
+
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        executor.map(execute_on_device, ss928_ip)
+
+
