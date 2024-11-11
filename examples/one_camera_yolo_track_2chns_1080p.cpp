@@ -418,6 +418,9 @@ int main(int argc, char *argv[]) {
   std::this_thread::sleep_for(std::chrono::microseconds(start_pts - _now));
   std::vector<int> v_last_multiple(v_frame_chs.size(), -1);
 
+  // output start time
+  logger.log(INFO, getCurrentTimeWithMilliseconds());
+
   while (running) {
     sync_time.sync();
 
