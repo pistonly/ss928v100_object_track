@@ -126,21 +126,13 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
       tr.update(tlwh_new);
     }
 
-    // NOTE: tcp client need: x0, y0, x1, y1, conf, track_id at 1920x1080 frame.
+    // NOTE: tcp client need: x0, y0, x1, y1, conf, track_id at 1920x1080 frame, current resolution 1920x1152
     int offset_y = -1 * OFFSET_H;
-    // std::vector<std::vector<float>> track_res(
-    //     {{tr._tlwh[0], tr._tlwh[1] + offset_y, tr._tlwh[0] + tr._tlwh[2],
-    //       tr._tlwh[0] + tr._tlwh[3] + offset_y, 0.f, trackerId}});
     // for 2K visualization
     std::vector<float> track_res_one(
-        {tr._tlwh[0] / 2, (tr._tlwh[1] + offset_y) / 2,
-         (tr._tlwh[0] + tr._tlwh[2]) / 2,
-         (tr._tlwh[0] + tr._tlwh[3] + offset_y) / 2, 0.f, trackerId});
+        {tr._tlwh[0], (tr._tlwh[1] + offset_y), (tr._tlwh[0] + tr._tlwh[2]),
+         (tr._tlwh[0] + tr._tlwh[3] + offset_y), 0.f, trackerId});
     track_res.push_back(track_res_one);
-    // std::vector<std::vector<float>> track_res(
-    //     {{tr._tlwh[0] / 2, (tr._tlwh[1] + offset_y) / 2,
-    //       (tr._tlwh[0] + tr._tlwh[2]) / 2,
-    //       (tr._tlwh[0] + tr._tlwh[3] + offset_y) / 2, 0.f, trackerId}});
 
     // 检查目标是否在图像边缘或尺寸是否超过640x640，如果是则移除该追踪器
     if (isAtImageEdge(tr._tlwh, edge_thres_x, edge_thres_y, IMAGE_HEIGHT,
@@ -188,8 +180,8 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
                           int track_max_num = 6, float skip_iou_thres = 0.5,
                           float delete_iou_thres = 0.3, int privileged_x0 = 0,
                           int privileged_x1 = IMAGE_WIDTH,
-                          int privileged_y0 = 0,
-                          int privileged_y1 = IMAGE_HEIGHT, float cls_coef = 10,
+                          int privileged_y0 = OFFSET_H,
+                          int privileged_y1 = IMAGE_HEIGHT - OFFSET_H, float cls_coef = 10,
                           float region_coef = 100, float conf_coef = 1.f) {
   const std::vector<std::vector<half>> &det_bbox_batch0 = det_bbox[0];
   const std::vector<half> &det_conf_batch0 = det_conf[0];
