@@ -306,6 +306,12 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  sync_to_system_time();
+  // sync mpi time to system time, every 5s
+  TimeSynchronizer sync_time(5000000);
+  sync_time.sync();
+
+
   json config_data;
   try {
     config_file >> config_data;
@@ -405,10 +411,6 @@ int main(int argc, char *argv[]) {
     real_result_f << "cameraId,timestamp,trackerId,l,t,w,h" << std::endl;
   }
 
-  sync_to_system_time();
-  // sync mpi time to system time, every 5s
-  TimeSynchronizer sync_time(5000000);
-  sync_time.sync();
 
   // sleep for next yolov8_time_interval
   int64_t _now = getCurrentTimestampInMicroseconds();
