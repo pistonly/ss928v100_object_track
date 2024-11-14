@@ -28,7 +28,7 @@ extern Logger logger;
 
 std::atomic<bool> running(true);
 void signal_handler(int signum) { running = false; }
-int track_id = 0;
+int g_track_id = 0;
 
 void processTrackers(std::unordered_map<int, STrack> &trackers,
                      NNN_Ostrack_Callback &ostModel,
@@ -177,10 +177,14 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
 
   // remove tracker who is not in detections
   for (auto it = tracks.begin(); it != tracks.end();) {
-    if (track_ious[it->first] < delete_iou_thres) {
+    const auto tId = it->first;
+    const auto iou = track_ious[tId];
+    if (iou < delete_iou_thres) {
       it = tracks.erase(it);
+      logger.log(DEBUG, "Delete tracker: ", tId, " iou: ", iou);
     } else {
       ++it;
+      logger.log(DEBUG, "Confirm tracker: ", tId, " iou: ", iou);
     }
   }
 
@@ -193,14 +197,20 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
             });
 
   // add trackers
-  int needed_track_num = track_max_num - tracks.size();
-  int added_num = 0;
-  for (const auto &tlwh_pair : to_be_added_dets_with_score) {
-    tracks.emplace(track_id++, STrack(tlwh_pair.second, using_kal_filter));
-    added_num++;
-    if (added_num == needed_track_num)
-      return;
+  if (tracks.size() < track_max_num) {
+    int needed_track_num = track_max_num - tracks.size();
+    int added_num = 0;
+    for (const auto &tlwh_pair : to_be_added_dets_with_score) {
+      logger.log(DEBUG, "Add new tracker: ", g_track_id,
+                 " tlwh: ", tlwh_pair.second[0], ", ", tlwh_pair.second[1],
+                 ", ", tlwh_pair.second[2], ", ", tlwh_pair.second[3]);
+      tracks.emplace(g_track_id++, STrack(tlwh_pair.second, using_kal_filter));
+      added_num++;
+      if (added_num == needed_track_num)
+        break;
+    }
   }
+  logger.log(INFO, "current tracker num: ", tracks.size());
 }
 
 int main(int argc, char *argv[]) {
@@ -298,6 +308,7 @@ int main(int argc, char *argv[]) {
   bool using_kal_filter = false;
   std::unordered_map<int, STrack> trackers;
 
+  // pre-allocate buffers
   std::vector<unsigned char> img(IMAGE_SIZE);
   // fill YUV to gray image
   const int Y_size = imageH * imageW;

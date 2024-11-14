@@ -265,16 +265,18 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
             });
 
   // add trackers
-  int needed_track_num = track_max_num - tracks.size();
-  int added_num = 0;
-  for (const auto &tlwh_pair : to_be_added_dets_with_score) {
-    logger.log(DEBUG, "Add new tracker: ", g_track_id,
-               " tlwh: ", tlwh_pair.second[0], ", ", tlwh_pair.second[1], ", ",
-               tlwh_pair.second[2], ", ", tlwh_pair.second[3]);
-    tracks.emplace(g_track_id++, STrack(tlwh_pair.second, using_kal_filter));
-    added_num++;
-    if (added_num == needed_track_num)
-      return;
+  if (tracks.size() < track_max_num) {
+    int needed_track_num = track_max_num - tracks.size();
+    int added_num = 0;
+    for (const auto &tlwh_pair : to_be_added_dets_with_score) {
+      logger.log(DEBUG, "Add new tracker: ", g_track_id,
+                 " tlwh: ", tlwh_pair.second[0], ", ", tlwh_pair.second[1],
+                 ", ", tlwh_pair.second[2], ", ", tlwh_pair.second[3]);
+      tracks.emplace(g_track_id++, STrack(tlwh_pair.second, using_kal_filter));
+      added_num++;
+      if (added_num == needed_track_num)
+        break;
+    }
   }
   logger.log(INFO, "current tracker num: ", tracks.size());
 }
@@ -396,6 +398,12 @@ int main(int argc, char *argv[]) {
 
   // pre-allocate buffers
   std::vector<unsigned char> img(IMAGE_SIZE);
+  // fill YUV to gray image
+  const int Y_size = imageH * imageW;
+  const int UV_size = Y_size / 2;
+  std::fill(img.begin(), img.begin() + Y_size, 114);
+  std::fill(img.begin() + Y_size, img.end(), 128);
+
   std::vector<ot_video_frame_info> v_frame_chs(v_cameraIds.size());
 
   signal(SIGINT, signal_handler); // Capture Ctrl+C
