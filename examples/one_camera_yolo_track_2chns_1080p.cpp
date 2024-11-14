@@ -101,9 +101,14 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
     int thres = 5;
     int edge_thres_x = thres;
     int edge_thres_y = OFFSET_H + thres;
+    bool is_new_tracker = false;
 
     {
       Timer timer("model duration");
+      if (!tr.template_packet.initialized) {
+        is_new_tracker = true;
+      }
+
       if (ostModel.preprocess(img.data(), imageW, imageH, t_x0, t_y0, t_w, t_h,
                               search_resize_factor, search_crop_x0,
                               search_crop_y0, tr.template_packet) != SUCCESS) {
@@ -111,27 +116,32 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
         continue;
       }
 
-      if (ostModel.ExecuteRPN_Async() != SUCCESS ||
-          ostModel.SynchronizeStream() != SUCCESS) {
-        ++it;
-        continue;
-      }
+      // new tracker only Executes preprocessing.
+      if (!is_new_tracker) {
+        if (ostModel.ExecuteRPN_Async() != SUCCESS ||
+            ostModel.SynchronizeStream() != SUCCESS) {
+          ++it;
+          continue;
+        }
 
-      if (ostModel.postprocess(search_crop_x0, search_crop_y0,
-                               search_resize_factor, tlwh_new) != SUCCESS) {
-        ++it;
-        continue;
-      }
+        if (ostModel.postprocess(search_crop_x0, search_crop_y0,
+                                 search_resize_factor, tlwh_new) != SUCCESS) {
+          ++it;
+          continue;
+        }
 
-      tr.update(tlwh_new);
+        tr.update(tlwh_new);
+      }
     }
 
-    // NOTE: tcp client need: x0, y0, x1, y1, conf, track_id at 1920x1080 frame, current resolution 1920x1152
+    // NOTE: tcp client need: x0, y0, x1, y1, conf, track_id at 1920x1080 frame,
+    // current resolution 1920x1152
     int offset_y = -1 * OFFSET_H;
     // for 2K visualization
-    std::vector<float> track_res_one(
-        {tr._tlwh[0], (tr._tlwh[1] + offset_y), (tr._tlwh[0] + tr._tlwh[2]),
-         (tr._tlwh[0] + tr._tlwh[3] + offset_y), 0.f, trackerId});
+    std::vector<float> track_res_one({tr._tlwh[0], (tr._tlwh[1] + offset_y),
+                                      (tr._tlwh[0] + tr._tlwh[2]),
+                                      (tr._tlwh[0] + tr._tlwh[3] + offset_y),
+                                      0.f, static_cast<float>(trackerId)});
     track_res.push_back(track_res_one);
 
     // 检查目标是否在图像边缘或尺寸是否超过640x640，如果是则移除该追踪器
@@ -181,8 +191,9 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
                           float delete_iou_thres = 0.3, int privileged_x0 = 0,
                           int privileged_x1 = IMAGE_WIDTH,
                           int privileged_y0 = OFFSET_H,
-                          int privileged_y1 = IMAGE_HEIGHT - OFFSET_H, float cls_coef = 10,
-                          float region_coef = 100, float conf_coef = 1.f) {
+                          int privileged_y1 = IMAGE_HEIGHT - OFFSET_H,
+                          float cls_coef = 10, float region_coef = 100,
+                          float conf_coef = 1.f) {
   const std::vector<std::vector<half>> &det_bbox_batch0 = det_bbox[0];
   const std::vector<half> &det_conf_batch0 = det_conf[0];
   const std::vector<half> &cls_batch0 = cls[0];

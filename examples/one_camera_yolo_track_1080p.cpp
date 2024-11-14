@@ -50,9 +50,15 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
     int thres = 5;
     int edge_thres_x = thres;
     int edge_thres_y = OFFSET_H + thres;
+    bool is_new_tracker = false;
 
     {
       Timer timer("model duration");
+
+      if (!tr.template_packet.initialized) {
+        is_new_tracker = true;
+      }
+
       if (ostModel.preprocess(img.data(), imageW, imageH, t_x0, t_y0, t_w, t_h,
                               search_resize_factor, search_crop_x0,
                               search_crop_y0, tr.template_packet) != SUCCESS) {
@@ -60,19 +66,22 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
         continue;
       }
 
-      if (ostModel.ExecuteRPN_Async() != SUCCESS ||
-          ostModel.SynchronizeStream() != SUCCESS) {
-        ++it;
-        continue;
-      }
+      // new tracker only Executes preprocessing.
+      if (!is_new_tracker) {
+        if (ostModel.ExecuteRPN_Async() != SUCCESS ||
+            ostModel.SynchronizeStream() != SUCCESS) {
+          ++it;
+          continue;
+        }
 
-      if (ostModel.postprocess(search_crop_x0, search_crop_y0,
-                               search_resize_factor, tlwh_new) != SUCCESS) {
-        ++it;
-        continue;
-      }
+        if (ostModel.postprocess(search_crop_x0, search_crop_y0,
+                                 search_resize_factor, tlwh_new) != SUCCESS) {
+          ++it;
+          continue;
+        }
 
-      tr.update(tlwh_new);
+        tr.update(tlwh_new);
+      }
     }
 
     if (save_result && real_result_f.is_open()) {
@@ -276,7 +285,8 @@ int main(int argc, char *argv[]) {
   std::chrono::microseconds yolov8_time_interval(yolov8_time_interval_s *
                                                  1000000); // 微秒
 
-  std::vector<int> selected_det_ids = config_data["selected_det_ids"].get<std::vector<int>>();
+  std::vector<int> selected_det_ids =
+      config_data["selected_det_ids"].get<std::vector<int>>();
   int max_tracker_num = config_data["max_tracker_num"];
 
   // VDEC source
@@ -319,7 +329,8 @@ int main(int argc, char *argv[]) {
   signal(SIGINT, signal_handler); // Capture Ctrl+C
 
   // Save results
-  std::ofstream real_result_f = create_file_from_pts(output_dir, "results.csv", output_dir);
+  std::ofstream real_result_f =
+      create_file_from_pts(output_dir, "results.csv", output_dir);
   if (!real_result_f) {
     logger.log(ERROR, "opening file for writing: ", output_dir + "results.csv");
   } else {
@@ -359,9 +370,11 @@ int main(int argc, char *argv[]) {
                                max_tracker_num);
           last_yolov8_time = now;
           // save yolov8 results
-          std::string det_file_name = getCurrentTimeWithMilliseconds() + "_" + std::to_string(det_bbox[0].size()) + ".csv";
-          save_detect_results_csv(det_bbox, det_conf, det_cls, output_dir, det_file_name);
-
+          std::string det_file_name = getCurrentTimeWithMilliseconds() + "_" +
+                                      std::to_string(det_bbox[0].size()) +
+                                      ".csv";
+          save_detect_results_csv(det_bbox, det_conf, det_cls, output_dir,
+                                  det_file_name);
         }
 
         // Use Kalman filter if enabled
