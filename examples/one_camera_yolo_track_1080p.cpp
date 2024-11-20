@@ -93,7 +93,8 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
     // 检查目标是否在图像边缘或尺寸是否超过640x640，如果是则移除该追踪器
     if (isAtImageEdge(tr._tlwh, edge_thres_x, edge_thres_y, IMAGE_HEIGHT,
                       IMAGE_WIDTH) ||
-        tr._tlwh[2] > 640 || tr._tlwh[3] > 640) {
+        (tr._tlwh[2] * tr._tlwh[3]) > 2000) {
+      logger.log(DEBUG, "delete tracker: at edge or too big. trackId: ", it->first);
       it = trackers.erase(it);
     } else {
       ++it;
@@ -119,7 +120,7 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
                           std::vector<std::vector<half>> &cls,
                           bool using_kal_filter, std::vector<int> selected_ids,
                           int track_max_num = 6, float skip_iou_thres = 0.5,
-                          float delete_iou_thres = 0.3, int privileged_x0 = 0,
+                          float delete_iou_thres = 0.1, int privileged_x0 = 0,
                           int privileged_x1 = IMAGE_WIDTH,
                           int privileged_y0 = 0,
                           int privileged_y1 = IMAGE_HEIGHT, float cls_coef = 10,
@@ -135,6 +136,7 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
   }
 
   std::vector<std::pair<float, std::vector<float>>> to_be_added_dets_with_score;
+  to_be_added_dets_with_score.clear();
 
   float privilege_score = 0.f;
   int index_ord = 0;
@@ -151,6 +153,12 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
 
     float iou = 0;
     const std::vector<half> &xyxy = det_bbox_batch0[i];
+    // filter by area; area should less than 50x50
+    float area = (xyxy[2] - xyxy[0]) * (xyxy[3] - xyxy[1]);
+    if (area > 2000) {
+      logger.log(DEBUG, "skip big detection");
+      continue;
+    }
 
     for (const auto &tr : tracks) {
       const std::vector<float> &xyxy_tr = tlwh2xyxy(tr.second._tlwh);
@@ -160,6 +168,7 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
       if (iou_tmp > track_ious[tr.first])
         track_ious[tr.first] = iou_tmp;
     }
+
     if (iou > skip_iou_thres) {
       logger.log(DEBUG, "skip det in tracker-pool");
       continue;
@@ -353,6 +362,14 @@ int main(int argc, char *argv[]) {
         // ss << "/mnt/data/sot/frame_" << imageId << ".jpg";
         // saveBinaryFile(img, ss.str());
 
+        // Use Kalman filter if enabled
+        if (using_kal_filter) {
+          STrack::multi_predict(trackers);
+        }
+
+        processTrackers(trackers, ostModel, img, imageW, imageH, imageId,
+                        real_result_f, save_result);
+
         // 获取当前时间
         auto now = std::chrono::steady_clock::now();
         // 计算距离上一次执行 yolov8 的时间差
@@ -370,20 +387,14 @@ int main(int argc, char *argv[]) {
                                max_tracker_num);
           last_yolov8_time = now;
           // save yolov8 results
-          std::string det_file_name = getCurrentTimeWithMilliseconds() + "_" +
+          std::string det_file_name = getCurrentTimeWithMilliseconds() + "_" + std::to_string(imageId) + "_" +
                                       std::to_string(det_bbox[0].size()) +
                                       ".csv";
           save_detect_results_csv(det_bbox, det_conf, det_cls, output_dir,
                                   det_file_name);
         }
 
-        // Use Kalman filter if enabled
-        if (using_kal_filter) {
-          STrack::multi_predict(trackers);
-        }
-
-        processTrackers(trackers, ostModel, img, imageW, imageH, imageId++,
-                        real_result_f, save_result);
+        imageId++;
 
       } else {
         break;

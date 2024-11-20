@@ -147,7 +147,9 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
     // 检查目标是否在图像边缘或尺寸是否超过640x640，如果是则移除该追踪器
     if (isAtImageEdge(tr._tlwh, edge_thres_x, edge_thres_y, IMAGE_HEIGHT,
                       IMAGE_WIDTH) ||
-        tr._tlwh[2] > 640 || tr._tlwh[3] > 640) {
+        (tr._tlwh[2] * tr._tlwh[3]) > 2500) {
+      logger.log(DEBUG,
+                 "delete tracker: at edge or too big. trackId: ", it->first);
       it = trackers.erase(it);
     } else {
       ++it;
@@ -221,6 +223,13 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
 
     float iou = 0;
     const std::vector<half> &xyxy = det_bbox_batch0[i];
+
+    // filter by area; area should less than 50x50
+    float area = (xyxy[2] - xyxy[0]) * (xyxy[3] - xyxy[1]);
+    if (area > 2500) {
+      logger.log(DEBUG, "skip big detection");
+      continue;
+    }
 
     for (const auto &tr : tracks) {
       const std::vector<float> &xyxy_tr = tlwh2xyxy(tr.second._tlwh);
@@ -441,6 +450,7 @@ int main(int argc, char *argv[]) {
   while (running) {
     sync_time.sync();
 
+
     for (int current_ch = 0; current_ch < v_cameraIds.size(); ++current_ch) {
       Timer timer("process one frame of chn-" + std::to_string(current_ch));
       // process channel current_ch
@@ -457,10 +467,21 @@ int main(int argc, char *argv[]) {
       auto &trackers = v_trackers[current_ch];
       auto &last_yolo_ts = v_last_yolo_ts[current_ch];
 
+      // Use Kalman filter if enabled
+      if (using_kal_filter) {
+        STrack::multi_predict(trackers);
+      }
+
+      processTrackers(trackers, ostModel, img, imageW, imageH, current_cameraId,
+                      v_frame_chs[current_ch].video_frame.pts / 1000,
+                      real_result_f, save_result, true);
+
       // run yolo at time_point which multiple of yolov8_time_interval
+      // or trackers_map is empty and have interval 1000us
       _now = v_frame_chs[current_ch].video_frame.pts;
       int current_multiple = (_now - start_pts) / yolov8_time_interval;
-      if (current_multiple > v_last_multiple[current_ch]) {
+      if (current_multiple > v_last_multiple[current_ch] ||
+          (trackers.size() == 0 && (_now - last_yolo_ts) > 1000)) {
         v_last_multiple[current_ch] = current_multiple;
         Timer timer("yolov8 processing ...");
         yolov8.process_one_image(img, det_bbox, det_conf, det_cls);
@@ -469,6 +490,7 @@ int main(int argc, char *argv[]) {
                              using_kal_filter, selected_det_ids,
                              max_tracker_num);
         last_yolo_ts = v_frame_chs[current_ch].video_frame.pts;
+
         // save yolov8 results: timestamp_cameraId_detectNum.csv
         std::string det_file_name =
             from_pts_to_strWithMilliseconds(
@@ -479,14 +501,6 @@ int main(int argc, char *argv[]) {
                                 det_file_name);
       }
 
-      // Use Kalman filter if enabled
-      if (using_kal_filter) {
-        STrack::multi_predict(trackers);
-      }
-
-      processTrackers(trackers, ostModel, img, imageW, imageH, current_cameraId,
-                      v_frame_chs[current_ch].video_frame.pts / 1000,
-                      real_result_f, save_result, true);
 
       process_frames(v_frame_chs[current_ch], current_ch, true);
     }

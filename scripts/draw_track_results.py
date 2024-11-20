@@ -4,7 +4,7 @@ from pathlib import Path
 import time
 import numpy as np
 
-result_path = "/home/liuyang/Documents/tmp/sot/results.csv"
+result_path = "/home/liuyang/Documents/tmp/sot/19700127_025536/results.csv"
 rtsp_url = "rtsp://172.23.24.52:8554/test"
 
 # columns: [imageId,  trackerId,        l ,       t,        w,       h]
@@ -26,10 +26,15 @@ if save:
 img_id = 0
 
 colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (0, 255, 255), (255, 0, 255)]
+# colors = [(255, 0, 0), (255, 0, 0),(255, 0, 0),(255, 0, 0),(255, 0, 0),(255, 0, 0),(255, 0, 0),(255, 0, 0)]
 color_index = 0
 stop = False
 
 frame = np.zeros((1152, 1920, 3), dtype=np.uint8) + 114
+
+result_dir = Path("./drawed_results-new")
+result_dir.mkdir(exist_ok=True)
+
 
 while True:
     ret, _frame = cap.read()
@@ -53,6 +58,7 @@ while True:
         cv2.rectangle(frame, (x0, y0), (x0 + w, y0 + h), color, 2)
         # print(x0, y0, w, h)
 
+    cv2.imwrite(str(result_dir / f"frame_{img_id:04d}.jpg"), frame)
     while True:
         key = cv2.waitKey(10);
         if key == 32: # space

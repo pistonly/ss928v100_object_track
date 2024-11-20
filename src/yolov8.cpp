@@ -106,7 +106,7 @@ void YOLOV8::post_process(std::vector<std::vector<std::vector<half>>> &det_bbox,
       for (auto j = 0; j < det_bbox[i].size(); ++j) {
         std::vector<half> &box = det_bbox[i][j];
         logger.log(DEBUG, "bbox: \n", box[0], ", ", box[1], ", ", box[2], ", ",
-                   box[3], det_conf[i][j], ", ", det_cls[i][j]);
+                   box[3], ",", det_conf[i][j], ", ", det_cls[i][j]);
       }
     }
   }
