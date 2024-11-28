@@ -260,18 +260,21 @@ void save_detect_results_csv(
     const std::vector<std::vector<half>> det_conf,
     const std::vector<std::vector<half>> det_cls, const std::string &out_dir,
     const std::string &filename) {
-  std::ofstream outFile(out_dir + filename, std::ios::binary);
-  if (!outFile) {
-    std::cerr << "Error opening file " << filename << " for writing."
-              << std::endl;
-    return;
-  }
 
   // only works when batch_num == 0
   const std::vector<std::vector<half>> &det_bbox_0 = det_bbox[0];
   const std::vector<half> &det_conf_0 = det_conf[0];
   const std::vector<half> &det_cls_0 = det_cls[0];
 
+  if (det_bbox_0.size() == 0)
+    return;
+
+  std::ofstream outFile(out_dir + filename, std::ios::binary);
+  if (!outFile) {
+    std::cerr << "Error opening file " << filename << " for writing."
+              << std::endl;
+    return;
+  }
   for (int i = 0; i < det_bbox_0.size(); ++i) {
     // xyxy
     for (const auto v : det_bbox_0[i]) {

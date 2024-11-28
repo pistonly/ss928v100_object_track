@@ -4,7 +4,7 @@ from pathlib import Path
 import time
 import numpy as np
 
-result_path = "/home/liuyang/Documents/tmp/sot/19700127_025536/results.csv"
+result_path = "/home/liuyang/Documents/tmp/sot/19700109_074400/results.csv"
 rtsp_url = "rtsp://172.23.24.52:8554/test"
 
 # columns: [imageId,  trackerId,        l ,       t,        w,       h]

@@ -178,15 +178,12 @@ bool YOLOV8::process_one_image(
     std::vector<std::vector<half>> &det_conf,
     std::vector<std::vector<half>> &det_cls) {
 
-  std::cout << "yolov8 H2D ..." << std::endl;
   // host to device
   Host2Device(img.data(), img.size());
 
-  std::cout << "yolov8 inferencing ..." << std::endl;
   // inference
   Execute();
 
-  std::cout << "yolov8 postprocessing ..." << std::endl;
   // postprocess
   post_process(det_bbox, det_conf, det_cls);
   return true;

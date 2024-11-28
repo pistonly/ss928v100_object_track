@@ -1,8 +1,8 @@
 import telnetlib
 import time
-import json
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+import datetime
 
 
 def do_telnet(tn, finish, commands):
@@ -51,19 +51,27 @@ if __name__ == '__main__':
     password = ''
     finish = '~ #'
 
-    commands = [
-        # kill && mount nfs
-            'pkill one_camera_yolo_track_2chns_1080p; mount -t nfs -o nolock 192.168.0.77:/e/nfs_share /mnt/nfs',
-        f'''mkdir -p {target_dir_parent} && nohup sh -c "cp -r /mnt/data/sot {target_dir} &&rm -r /mnt/data/sot && mkdir -p /mnt/data/sot && cp /mnt/data/track_log.log {target_dir}/ && rm /mnt/data/track_log.log" &'''
-    ]
+    # 获取当前时间
+    now = datetime.datetime.now()
+    # 格式化时间为可读形式
+    now_str = now.strftime('%Y%m%d_%H%M%S')
 
     def execute_on_device(ip):
+
+        target_dir_parent = f"/mnt/nfs/sot_results/{now_str}"
+        target_dir = f"{target_dir_parent}/{ip}"
+
+        commands = [
+            # kill && mount nfs
+            'pkill one_camera_yolo_track_2chns_1080p; mount -t nfs -o nolock 192.168.0.77:/e/nfs_share /mnt/nfs',
+            f'''mkdir -p {target_dir_parent} && nohup sh -c "cp -r /mnt/data/sot {target_dir} &&rm -r /mnt/data/sot && mkdir -p /mnt/data/sot && cp /mnt/data/track_log.log {target_dir}/ && rm /mnt/data/track_log.log" > /root/copy_result.log 2>&1 &'''
+        ]
         tn = link_ss928(Host + ip, username, password, finish)
         if tn:
             do_telnet(tn, finish, commands)
             tn.close()
 
-    with ThreadPoolExecutor(max_workers=6) as executor:
+    with ThreadPoolExecutor(max_workers=3) as executor:
         executor.map(execute_on_device, ss928_ip)
 
 

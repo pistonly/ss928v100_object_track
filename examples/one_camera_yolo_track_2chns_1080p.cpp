@@ -25,6 +25,7 @@ extern Logger logger;
 #define IMAGE_WIDTH 1920
 #define OFFSET_W 0
 #define OFFSET_H 36
+#define AREA_THRESH 2500
 
 std::atomic<bool> running(true);
 void signal_handler(int signum) { running = false; }
@@ -147,7 +148,7 @@ void processTrackers(std::unordered_map<int, STrack> &trackers,
     // 检查目标是否在图像边缘或尺寸是否超过640x640，如果是则移除该追踪器
     if (isAtImageEdge(tr._tlwh, edge_thres_x, edge_thres_y, IMAGE_HEIGHT,
                       IMAGE_WIDTH) ||
-        (tr._tlwh[2] * tr._tlwh[3]) > 2500) {
+        (tr._tlwh[2] * tr._tlwh[3]) > AREA_THRESH) {
       logger.log(DEBUG,
                  "delete tracker: at edge or too big. trackId: ", it->first);
       it = trackers.erase(it);
@@ -189,8 +190,8 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
                           std::vector<std::vector<half>> det_conf,
                           std::vector<std::vector<half>> &cls,
                           bool using_kal_filter, std::vector<int> selected_ids,
-                          int track_max_num = 6, float skip_iou_thres = 0.5,
-                          float delete_iou_thres = 0.3, int privileged_x0 = 0,
+                          int track_max_num = 6, float skip_iou_thres = 0.25,
+                          float delete_iou_thres = 0.05, int privileged_x0 = 0,
                           int privileged_x1 = IMAGE_WIDTH,
                           int privileged_y0 = OFFSET_H,
                           int privileged_y1 = IMAGE_HEIGHT - OFFSET_H,
@@ -226,10 +227,11 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
 
     // filter by area; area should less than 50x50
     float area = (xyxy[2] - xyxy[0]) * (xyxy[3] - xyxy[1]);
-    if (area > 2500) {
+    if (area > AREA_THRESH) {
       logger.log(DEBUG, "skip big detection");
       continue;
     }
+
 
     for (const auto &tr : tracks) {
       const std::vector<float> &xyxy_tr = tlwh2xyxy(tr.second._tlwh);
@@ -239,6 +241,12 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
       if (iou_tmp > track_ious[tr.first])
         track_ious[tr.first] = iou_tmp;
     }
+
+    if (det_conf_batch0[i] < 0.5) {
+      logger.log(DEBUG, "skip low conf detection, conf: ", det_conf_batch0[i]);
+      continue;
+    }
+
     if (iou > skip_iou_thres) {
       logger.log(DEBUG, "skip det in tracker-pool");
       continue;
@@ -269,10 +277,10 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
     const auto iou = track_ious[tId];
     if (iou < delete_iou_thres) {
       it = tracks.erase(it);
-      logger.log(DEBUG, "Delete tracker: ", tId, " iou: ", iou);
+      logger.log(DEBUG, "Delete tracker: iou: ", iou, " trackId: ", tId);
     } else {
       ++it;
-      logger.log(DEBUG, "Confirm tracker: ", tId, " iou: ", iou);
+      logger.log(DEBUG, "Confirm tracker: iou: ", iou, " trackId: ", tId);
     }
   }
 
@@ -298,7 +306,7 @@ void add_tracks_from_dets(std::unordered_map<int, STrack> &tracks,
         break;
     }
   }
-  logger.log(INFO, "current tracker num: ", tracks.size());
+  logger.log(DEBUG, "current tracker num: ", tracks.size());
 }
 
 int main(int argc, char *argv[]) {
@@ -447,6 +455,7 @@ int main(int argc, char *argv[]) {
   // output start time
   logger.log(INFO, getCurrentTimeWithMilliseconds());
 
+  int total_tracker_size = 0;
   while (running) {
     sync_time.sync();
 
@@ -476,12 +485,17 @@ int main(int argc, char *argv[]) {
                       v_frame_chs[current_ch].video_frame.pts / 1000,
                       real_result_f, save_result, true);
 
+      total_tracker_size = 0;
+      for (const auto &trackers_i: v_trackers){
+        total_tracker_size += trackers_i.size();
+      }
+
       // run yolo at time_point which multiple of yolov8_time_interval
       // or trackers_map is empty and have interval 1000us
-      _now = v_frame_chs[current_ch].video_frame.pts;
+      _now = v_frame_chs[current_ch].video_frame.pts / 1000;
       int current_multiple = (_now - start_pts) / yolov8_time_interval;
       if (current_multiple > v_last_multiple[current_ch] ||
-          (trackers.size() == 0 && (_now - last_yolo_ts) > 1000)) {
+          (total_tracker_size == 0 && (_now - last_yolo_ts) > 1000)) {
         v_last_multiple[current_ch] = current_multiple;
         Timer timer("yolov8 processing ...");
         yolov8.process_one_image(img, det_bbox, det_conf, det_cls);
@@ -489,7 +503,7 @@ int main(int argc, char *argv[]) {
         add_tracks_from_dets(trackers, det_bbox, det_conf, det_cls,
                              using_kal_filter, selected_det_ids,
                              max_tracker_num);
-        last_yolo_ts = v_frame_chs[current_ch].video_frame.pts;
+        last_yolo_ts = v_frame_chs[current_ch].video_frame.pts / 1000;
 
         // save yolov8 results: timestamp_cameraId_detectNum.csv
         std::string det_file_name =

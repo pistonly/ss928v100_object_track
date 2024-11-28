@@ -1,22 +1,24 @@
 {
-    "rtsp_url": "rtsp://172.23.24.52:8554/test",
-    "om_path": "../models/MyViTrack_ep0100_192_L3.om",
-    "yolov8_om_path": "../models/yolov8_yanshou-20240922-0930_1152x1920_FP16.om",
-    "tcp_ip": "192.168.0.99",
-    "tcp_port": "12321",
-    "output_dir": "/mnt/data/sot/",
-    "save_result": true,
-    "decode_step_mode": true,
-    "log_level": "INFO",
-    "selected_det_ids": [2, 1],
-    "max_det": 20,
-    "conf_thres": 0.001,
-    "iou_thres": 0.6,
-    "yolov8_time_interval": 10,
+        "rtsp_url": "rtsp://172.23.24.52:8554/test",
+        "om_path": "../models/MyViTrack_ep0100_192_L3.om",
+        "yolov8_om_path": "../models/yolov8n_yanshou_laixi-1122-step-10_1152x1920_FP16.om",
+        "tcp_ip": "192.168.0.99",
+        "tcp_port": "12321",
+        "output_dir": "/mnt/data/sot/",
+        "save_result": true,
+        "decode_step_mode": true,
+        "log_level": "INFO",
+        "selected_det_ids": [
+            0, 1
+        ],
+        "max_det": 100,
+        "conf_thres": 0.1,
+        "iou_thres": 0.6,
+        "yolov8_time_interval": 1,
+        "template_factor": 1.6,
+        "search_area_factor": 4,
+        "template_size": 96,
+        "search_size": 192,
+        "max_tracker_num": 7
 
-    "template_factor": 1.6,
-    "search_area_factor": 4,
-    "template_size": 96,
-    "search_size": 192,
-    "max_tracker_num": 6
 }
